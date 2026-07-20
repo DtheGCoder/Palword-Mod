@@ -1,0 +1,22 @@
+{
+  "palpagos": {
+    "title": "Palpagos-Inseln",
+    "subtitle": "inkl. Sakurajima, Feybreak & Sunreach",
+    "image": "assets/map/palpagos.webp",
+    "width": 8192,
+    "height": 8192,
+    "worldBounds": { "minX": -1099400.0, "maxX": 349400.0, "minY": -724400.0, "maxY": 724400.0 },
+    "priority": 0,
+    "seaColor": "#0a1622"
+  },
+  "tree": {
+    "title": "Weltenbaum",
+    "subtitle": "Endgame-Zone",
+    "image": "assets/map/tree.webp",
+    "width": 8192,
+    "height": 8192,
+    "worldBounds": { "minX": 347351.5, "maxX": 689148.5, "minY": -818197.0, "maxY": -476400.0 },
+    "priority": 1,
+    "seaColor": "#0c1018"
+  }
+}

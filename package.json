@@ -1,0 +1,23 @@
+{
+  "name": "pal-overlay",
+  "productName": "PalPilot",
+  "version": "1.0.0",
+  "description": "Palworld Ingame-Map-Overlay: Komplette Karte, Live-Position, Wegpunkte mit Navigator, Pal-Spawns",
+  "main": "src/main/main.js",
+  "author": "Damian",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "demo": "electron . --windowed --mock",
+    "fetch-assets": "node scripts/fetch-assets.mjs",
+    "dev": "node scripts/dev-server.mjs",
+    "smoke": "electron . --smoke --mock",
+    "postinstall": "node scripts/copy-vendor.mjs"
+  },
+  "devDependencies": {
+    "electron": "latest"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4"
+  }
+}

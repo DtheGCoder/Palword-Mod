@@ -1,0 +1,22 @@
+# Abhängigkeiten & Vendor
+node_modules/
+src/renderer/vendor/
+
+# Von `npm run fetch-assets` heruntergeladene / generierte Spiel-Assets
+# (groß + aus dem Spiel/Community extrahiert → nicht im Repo, jederzeit neu ladbar)
+assets/map/
+assets/icons/
+data/pals.json
+data/markers.json
+data/spawns.json
+data/items.json
+data/meta.json
+
+# Lokale Claude-Konfiguration
+.claude/settings.local.json
+
+# Betriebssystem / Editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.log

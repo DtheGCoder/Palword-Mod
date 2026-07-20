@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' file: data: blob: http://127.0.0.1:* http://localhost:*; img-src 'self' file: data: blob: http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>PalPilot — Palworld Overlay</title>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="mode-map">
+  <div id="mapRoot">
+    <div id="map"></div>
+    <header id="topbar" class="glass"></header>
+    <aside id="leftPanel" class="glass"></aside>
+    <aside id="rightPanel" class="glass"></aside>
+    <footer id="bottombar" class="glass"></footer>
+    <div id="ctxMenu" class="glass"></div>
+    <div id="settingsModal"></div>
+    <div id="setupModal"></div>
+  </div>
+  <div id="hudRoot"></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
