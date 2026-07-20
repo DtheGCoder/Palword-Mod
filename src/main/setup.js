@@ -106,6 +106,70 @@ function enableUe4ssConsole(bin) {
   return false;
 }
 
+// Prüft gründlich, ob UE4SS wirklich injiziert werden kann. Ohne die
+// Loader-DLL neben Palworld-Win64-Shipping.exe startet UE4SS nie — dann läuft
+// auch unsere Lua-Mod nicht und das Overlay bleibt „Mod nicht aktiv".
+// @returns {{ok:boolean, bin:string, platform:string, loaderDll:string|null,
+//            hasCore:boolean, modsDir:string|null, modInstalled:boolean,
+//            modEnabled:boolean, wrongModDir:string|null, problems:string[]}}
+function diagnoseUe4ss(bin, gamePath) {
+  const problems = [];
+  const platform = /WinGDK/i.test(bin) ? 'Xbox/GamePass (WinGDK)' : 'Steam (Win64)';
+
+  // 1) Loader-DLL (Proxy) direkt neben der Spiel-EXE?
+  const loaders = ['dwmapi.dll', 'ue4ss.dll', 'xinput1_3.dll', 'dinput8.dll', 'bitfix.dll'];
+  const loaderDll = loaders.find((d) => fs.existsSync(path.join(bin, d))) || null;
+  if (!loaderDll) {
+    problems.push('Keine UE4SS-Loader-DLL (z. B. dwmapi.dll) neben Palworld-Win64-Shipping.exe — UE4SS wird so NICHT geladen.');
+  }
+
+  // 2) UE4SS-Kern vorhanden?
+  const coreCandidates = [
+    path.join(bin, 'ue4ss', 'UE4SS.dll'),
+    path.join(bin, 'UE4SS.dll'),
+    path.join(bin, 'ue4ss', 'dwmapi.dll'),
+  ];
+  const hasCore = coreCandidates.some((p) => fs.existsSync(p)) || fs.existsSync(path.join(bin, 'ue4ss'));
+  if (!hasCore) problems.push('UE4SS-Kern (Ordner „ue4ss" / UE4SS.dll) fehlt im Binaries-Ordner.');
+
+  // 3) Mods-Ordner + unsere Mod
+  const modsDir = ue4ssModsDir(bin);
+  let modInstalled = false, modEnabled = false;
+  if (modsDir) {
+    const md = path.join(modsDir, 'PalOverlayTracker');
+    modInstalled = fs.existsSync(path.join(md, 'Scripts', 'main.lua'));
+    modEnabled = fs.existsSync(path.join(md, 'enabled.txt'));
+    if (modInstalled && !modEnabled) problems.push('Mod liegt da, ist aber nicht aktiviert (enabled.txt fehlt).');
+  } else {
+    problems.push('Kein UE4SS-Mods-Ordner (bin\\ue4ss\\Mods bzw. bin\\Mods) gefunden.');
+  }
+
+  // 4) Häufiger Fehler: Mod im FALSCHEN Ordner (Spielwurzel\Mods oder ~mods)
+  let wrongModDir = null;
+  const wrongCandidates = [
+    path.join(gamePath || '', 'Mods', 'PalOverlayTracker'),
+    path.join(gamePath || '', 'Pal', 'Content', 'Paks', '~mods', 'PalOverlayTracker'),
+  ];
+  for (const w of wrongCandidates) {
+    if (fs.existsSync(w)) { wrongModDir = path.dirname(w); break; }
+  }
+  if (wrongModDir) {
+    problems.push(`Mod liegt zusätzlich im FALSCHEN Ordner: ${wrongModDir} — dort lädt UE4SS keine Lua-Mods (das ist für Pak-Mods).`);
+  }
+
+  // 5) GamePass-Sonderfall
+  if (platform.startsWith('Xbox') && !loaderDll) {
+    problems.push('Xbox/Game-Pass-Version: Proxy-DLL-Injektion ist hier oft blockiert — evtl. UE4SS-Xbox-Variante/Workshop nötig.');
+  }
+
+  return {
+    ok: problems.length === 0 && !!loaderDll && hasCore && modInstalled && modEnabled,
+    bin, platform, loaderDll, hasCore, modsDir,
+    modInstalled, modEnabled, wrongModDir, problems,
+  };
+}
+
+
 // ------------------------------------------------------------ UE4SS-Download
 
 async function fetchWithUa(url) {
@@ -305,7 +369,7 @@ function ensureModInstalled(ROOT, gamePath, paths) {
     const bin = binDir(gamePath);
     if (!bin) return { ok: false, reason: 'Pal\\Binaries nicht gefunden' };
     const mods = ue4ssModsDir(bin);
-    if (!mods) return { ok: false, reason: 'UE4SS nicht installiert — bitte Setup ausführen' };
+    if (!mods) return { ok: false, reason: 'UE4SS nicht installiert — bitte Setup ausführen', diag: diagnoseUe4ss(bin, gamePath) };
 
     const src = path.join(ROOT, 'ue4ss-mod', 'PalOverlayTracker');
     if (!fs.existsSync(src)) return { ok: false, reason: 'Mod-Quelle fehlt' };
@@ -331,11 +395,12 @@ function ensureModInstalled(ROOT, gamePath, paths) {
     } catch { /* egal */ }
 
     const consoleOn = enableUe4ssConsole(bin);
-    return { ok: true, modsDir: mods, gamePath, consoleOn };
+    const diag = diagnoseUe4ss(bin, gamePath);
+    return { ok: true, modsDir: mods, gamePath, consoleOn, diag };
   } catch (e) {
     return { ok: false, reason: e.message };
   }
 }
 
-module.exports = { detectPalworld, runSetup, ensureModInstalled, binDir, ue4ssModsDir };
+module.exports = { detectPalworld, runSetup, ensureModInstalled, diagnoseUe4ss, binDir, ue4ssModsDir };
 

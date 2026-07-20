@@ -241,7 +241,29 @@ async function autoRefreshMod() {
   } else {
     console.log('[mod] Mod-Refresh nicht möglich: ' + r.reason);
   }
+  printUe4ssDiagnosis(r.diag);
 }
+
+/** Gibt einen gut lesbaren UE4SS-Statusbericht in die start.bat-Konsole aus. */
+function printUe4ssDiagnosis(diag) {
+  if (!diag) return;
+  console.log('\n---------------- UE4SS-Diagnose ----------------');
+  console.log(' Plattform    : ' + diag.platform);
+  console.log(' Binaries     : ' + diag.bin);
+  console.log(' Loader-DLL   : ' + (diag.loaderDll ? diag.loaderDll + ' ✓' : 'FEHLT ✗  (ohne sie startet UE4SS nie)'));
+  console.log(' UE4SS-Kern   : ' + (diag.hasCore ? 'vorhanden ✓' : 'FEHLT ✗'));
+  console.log(' Mods-Ordner  : ' + (diag.modsDir || 'nicht gefunden ✗'));
+  console.log(' Mod-Dateien  : ' + (diag.modInstalled ? 'installiert ✓' : 'fehlen ✗') + ' · aktiviert: ' + (diag.modEnabled ? 'ja ✓' : 'nein ✗'));
+  if (diag.wrongModDir) console.log(' ! Falscher Ordner: ' + diag.wrongModDir);
+  if (diag.problems.length) {
+    console.log(' Probleme:');
+    for (const p of diag.problems) console.log('   • ' + p);
+  } else {
+    console.log(' → Alles korrekt. Beim Palworld-Start sollte das UE4SS-Konsolenfenster mit „[PalOverlayTracker] aktiv" erscheinen.');
+  }
+  console.log('------------------------------------------------\n');
+}
+
 
 // ---------------------------------------------------------------- Tray
 
