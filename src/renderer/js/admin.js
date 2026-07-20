@@ -46,13 +46,22 @@ export function initAdmin() {
   // Live-Inventar-Updates
   state.bridge.onInventory((inv) => {
     state.admin.inv = inv;
-    if (isAdminOpen()) renderInventory();
+    // NICHT neu zeichnen, während der Nutzer gerade eine Menge editiert oder den
+    // Item-Picker offen hat — sonst wird die Eingabe ständig weggerissen.
+    if (isAdminOpen() && !isBusyEditing()) renderInventory();
     updateConnBadge();
   });
   state.bridge.onInvStatus((s) => {
     state.admin.status = s.inv;
     updateConnBadge();
   });
+}
+
+/** True, während eine Mengen-Eingabe fokussiert ist oder der Picker offen ist. */
+function isBusyEditing() {
+  if (document.querySelector('#itemPicker.open')) return true;
+  const a = document.activeElement;
+  return !!(a && (a.classList?.contains('inv-count-edit') || a.id === 'pcCount' || a.id === 'pickSearch'));
 }
 
 export function isAdminOpen() {

@@ -823,7 +823,7 @@ function syncSettingsForm() {
   $('#setHudOpacity').value = s.hud.opacity ?? 0.95;
   $('#setHudPosNote').textContent = s.hud.corner === 'custom' && s.hud.customPos ? 'aktuell: frei platziert' : '';
   $('#setFollow').checked = !!s.map.followPlayer;
-  $('#setTrail').checked = s.map.showTrail !== false;
+  $('#setTrail').checked = !!s.map.showTrail;
   $('#setGrid2').checked = !!s.map.showGrid;
   $('#setDim').value = s.overlay.dimBackground ?? 0.6;
   $('#setHotkeys').innerHTML = Object.entries(s.hotkeys).map(([k, v]) => {

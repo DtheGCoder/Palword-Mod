@@ -247,7 +247,7 @@ function draw() {
   };
 
   // Spur
-  const trail = state.settings.map?.showTrail === false ? [] : state.trail;
+  const trail = state.settings.map?.showTrail ? state.trail : [];
   if (trail.length > 1) {
     ctx.strokeStyle = 'rgba(70,200,255,0.4)';
     ctx.lineWidth = 1.5;

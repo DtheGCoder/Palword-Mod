@@ -430,7 +430,7 @@ function drawPlayer(force) {
 
 function drawTrail() {
   if (trailLine) { trailLine.remove(); trailLine = null; }
-  if (state.settings.map?.showTrail === false) return;
+  if (!state.settings.map?.showTrail) return;   // standardmäßig aus
   const pts = state.trail.filter((t) => t.region === state.region);
   if (pts.length < 2) return;
   trailLine = L.polyline(pts.map((t) => worldToLl(t.wx, t.wy)), {

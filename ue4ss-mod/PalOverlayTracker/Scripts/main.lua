@@ -24,6 +24,7 @@ local POS_MS = 200
 
 local function valid(o) return o and o.IsValid and o:IsValid() end
 local function jesc(s) return tostring(s):gsub('\\', '\\\\'):gsub('"', '\\"') end
+local function log(s) print("[PalOverlayTracker] " .. tostring(s) .. "\n") end
 
 local function writeAtomic(path, text)
     local tmp = path .. ".tmp"
@@ -195,47 +196,58 @@ end
 local function addItem(inv, itemId, count)
     if count <= 0 then return end
     local fid = FName(itemId)
-    -- Palworld 1.0: RequestAddItem_ForDebug(id, count, bAssignPassive) ist die
-    -- eigens dafür vorgesehene Funktion und funktioniert am zuverlässigsten.
-    local ok = pcall(function() inv:RequestAddItem_ForDebug(fid, count, false) end)
-    -- Fallback: AddItem_ServerInternal(id, count, bAssignPassive, LogDelay, bNotifyLog) — 5 Parameter!
-    if not ok then
-        ok = pcall(function() inv:AddItem_ServerInternal(fid, count, false, 0.0, true) end)
+    -- Mehrere bekannte Wege probieren; der erste ohne Lua-Fehler „gewinnt".
+    local tries = {
+        { "RequestAddItem_ForDebug(3)", function() return inv:RequestAddItem_ForDebug(fid, count, false) end },
+        { "AddItem_ServerInternal(5)",  function() return inv:AddItem_ServerInternal(fid, count, false, 0.0, true) end },
+        { "AddItem_ServerInternal(4)",  function() return inv:AddItem_ServerInternal(fid, count, false, 0.0) end },
+        { "AddItem_ServerInternal(3)",  function() return inv:AddItem_ServerInternal(fid, count, false) end },
+    }
+    for _, t in ipairs(tries) do
+        local ok, err = pcall(t[2])
+        log(string.format("ADD %s x%d via %s -> %s", tostring(itemId), count, t[1], ok and "ok" or ("FEHLER: " .. tostring(err))))
+        if ok then return true end
     end
-    if not ok then
-        pcall(function() inv:AddItem_ServerInternal(fid, count, false, 0.0) end)
-    end
+    return false
 end
 
 local function consumeItem(inv, itemId, count)
     if count <= 0 then return end
     local fid = FName(itemId)
-    -- WICHTIG: RequestConsumeInventoryItem liegt auf UPalIncidentBase — NICHT auf
-    -- PalUtility (das war der Bug: „gemacht", aber nichts passierte).
+    -- 1) Offizielle Consume-Funktion liegt auf UPalIncidentBase (nicht PalUtility!)
     local inc = StaticFindObject("/Script/Pal.Default__PalIncidentBase")
+    local tries = {}
     if inc then
-        local ok = pcall(function() inc:RequestConsumeInventoryItem(inv, fid, count) end)
-        if ok then return end
+        tries[#tries + 1] = { "IncidentBase:RequestConsumeInventoryItem", function() return inc:RequestConsumeInventoryItem(inv, fid, count) end }
     end
-    -- Fallback: negatives „Add" entfernt in vielen Builds ebenfalls Items.
-    local ok2 = pcall(function() inv:RequestAddItem_ForDebug(fid, -count, false) end)
-    if ok2 then return end
-    pcall(function() inv:AddItem_ServerInternal(fid, -count, false, 0.0, true) end)
+    -- 2) Negatives „Add" entfernt in vielen Builds ebenfalls.
+    tries[#tries + 1] = { "RequestAddItem_ForDebug(-)", function() return inv:RequestAddItem_ForDebug(fid, -count, false) end }
+    tries[#tries + 1] = { "AddItem_ServerInternal(-,5)", function() return inv:AddItem_ServerInternal(fid, -count, false, 0.0, true) end }
+    for _, t in ipairs(tries) do
+        local ok, err = pcall(t[2])
+        log(string.format("REMOVE %s x%d via %s -> %s", tostring(itemId), count, t[1], ok and "ok" or ("FEHLER: " .. tostring(err))))
+        if ok then return true end
+    end
+    return false
 end
 
 local function applyCommand(op, id, count)
     local inv = getLocalInventoryData()
-    if not inv then return end
+    if not valid(inv) then log("BEFEHL ignoriert — kein lokales Inventar (im Spiel/in der Welt sein!)"); return end
+    log(string.format("BEFEHL empfangen: %s id=%s count=%s", tostring(op), tostring(id), tostring(count)))
     if op == "add" then
         addItem(inv, id, count)
     elseif op == "set" then
         local cur = currentCount(id)
+        log("  aktueller Bestand: " .. tostring(cur))
         if count > cur then addItem(inv, id, count - cur)
-        elseif count < cur then consumeItem(inv, id, cur - count) end
+        elseif count < cur then consumeItem(inv, id, cur - count)
+        else log("  Menge unveraendert — nichts zu tun") end
     elseif op == "remove" then
         local cur = currentCount(id)
         if cur > 0 then consumeItem(inv, id, cur) end
     end
+    pcall(writeInventory)   -- sofortige Rueckmeldung ans Overlay (soweit sofort sichtbar)
 end
 
 -- cmd-Datei: Zeile 1 = seq, danach "op|id|count"
@@ -259,6 +271,7 @@ local function processCommands()
     local seq = tonumber(lines[1])
     if not seq or seq == lastSeq then return end
     lastSeq = seq
+    log("Befehlsdatei gelesen (seq=" .. tostring(seq) .. ", " .. tostring(#lines - 1) .. " Befehl(e))")
     for i = 2, #lines do
         local op, id, cnt = lines[i]:match("^(%a+)|([^|]*)|(%-?%d+)$")
         if op and id then
