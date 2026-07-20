@@ -128,8 +128,12 @@ local function readInventory(pc)
         local c
         pcall(function() c = containers[ci] end)
         if valid(c) then
+            -- Slot-Anzahl: korrekte API ist UPalItemContainer:Num().
             local n = 0
-            pcall(function() n = c.SlotNum or 0 end)
+            pcall(function() n = c:Num() end)
+            if type(n) ~= "number" or n <= 0 then
+                pcall(function() n = c.ItemSlotArray and #c.ItemSlotArray or 0 end)
+            end
             if type(n) ~= "number" or n < 0 then n = 0 end
             if n > MAX_SLOTS_PER then n = MAX_SLOTS_PER end
             capacity = capacity + n
@@ -172,8 +176,14 @@ end
 
 -- ------------------------------------------------------------ Befehle ausführen
 
--- Aktuelle Gesamtmenge eines Items (über alle Slots) ermitteln
+-- Aktuelle Gesamtmenge eines Items — bevorzugt die native Zählfunktion,
+-- sonst Fallback über das gelesene Inventar.
 local function currentCount(itemId)
+    local inv = getLocalInventoryData()
+    if valid(inv) then
+        local ok, n = pcall(function() return inv:CountItemNum(FName(itemId)) end)
+        if ok and type(n) == "number" then return n end
+    end
     local total = 0
     local list = select(1, readInventory())
     for _, it in ipairs(list) do
@@ -184,9 +194,17 @@ end
 
 local function addItem(inv, itemId, count)
     if count <= 0 then return end
-    -- Palworld 1.0 (2026): 4 Parameter inkl. LogDelay; älterer Build: 3 Parameter.
-    local ok = pcall(function() inv:AddItem_ServerInternal(FName(itemId), count, false, 0.0) end)
-    if not ok then pcall(function() inv:AddItem_ServerInternal(FName(itemId), count, false) end) end
+    local fid = FName(itemId)
+    -- Palworld 1.0: RequestAddItem_ForDebug(id, count, bAssignPassive) ist die
+    -- eigens dafür vorgesehene Funktion und funktioniert am zuverlässigsten.
+    local ok = pcall(function() inv:RequestAddItem_ForDebug(fid, count, false) end)
+    -- Fallback: AddItem_ServerInternal(id, count, bAssignPassive, LogDelay, bNotifyLog) — 5 Parameter!
+    if not ok then
+        ok = pcall(function() inv:AddItem_ServerInternal(fid, count, false, 0.0, true) end)
+    end
+    if not ok then
+        pcall(function() inv:AddItem_ServerInternal(fid, count, false, 0.0) end)
+    end
 end
 
 local function consumeItem(inv, itemId, count)
