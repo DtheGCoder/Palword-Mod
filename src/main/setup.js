@@ -74,6 +74,38 @@ function ue4ssModsDir(bin) {
   return null;
 }
 
+// Findet die UE4SS-settings.ini (neues Layout: bin\ue4ss\, altes: bin\).
+function ue4ssSettingsFile(bin) {
+  for (const p of [path.join(bin, 'ue4ss', 'UE4SS-settings.ini'), path.join(bin, 'UE4SS-settings.ini')]) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+// Schaltet das UE4SS-Konsolenfenster ein, damit der Nutzer sieht, ob UE4SS
+// (und damit unsere Mod) überhaupt geladen wird. Ohne Konsole wirkt alles tot.
+function enableUe4ssConsole(bin) {
+  const ini = ue4ssSettingsFile(bin);
+  if (!ini) return false;
+  try {
+    let text = fs.readFileSync(ini, 'utf8');
+    const before = text;
+    const setKey = (key, val) => {
+      const re = new RegExp(`^(\\s*${key}\\s*=\\s*).*$`, 'mi');
+      if (re.test(text)) text = text.replace(re, `$1${val}`);
+    };
+    setKey('ConsoleEnabled', 1);
+    setKey('GuiConsoleEnabled', 1);
+    setKey('GuiConsoleVisible', 1);
+    if (text !== before) {
+      fs.copyFileSync(ini, ini + '.palpilot.bak');
+      fs.writeFileSync(ini, text, 'utf8');
+      return true;
+    }
+  } catch { /* egal — Konsole ist nur ein Komfort-Feature */ }
+  return false;
+}
+
 // ------------------------------------------------------------ UE4SS-Download
 
 async function fetchWithUa(url) {
@@ -248,8 +280,62 @@ async function runSetup(ROOT, gamePath, prog, paths) {
     warn('ini', `Config nicht anpassbar (${e.message}) — bitte im Spiel „Vollbild (Fenster)" wählen.`);
   }
 
+  // 6) UE4SS-Konsole aktivieren (sichtbares Lade-Feedback beim Spielstart)
+  try {
+    if (enableUe4ssConsole(bin)) {
+      prog('console', 'ok', 'UE4SS-Konsole aktiviert — beim Palworld-Start erscheint ein Konsolenfenster mit „[PalOverlayTracker] aktiv".');
+    } else {
+      prog('console', 'ok', 'UE4SS-Konsole bereits aktiv (oder Einstellung nicht gefunden).');
+    }
+  } catch { /* nicht kritisch */ }
+
   result.ok = true;
   return result;
 }
 
-module.exports = { detectPalworld, runSetup, binDir, ue4ssModsDir };
+/**
+ * Still & bei jedem Start: sorgt dafür, dass die Mod im Spielordner aktuell,
+ * aktiviert und mit den korrekten Pfaden versehen ist — SOFERN UE4SS bereits
+ * installiert ist. Lädt NICHTS herunter und wirft nie. Für Auto-Refresh.
+ * @returns {{ok:boolean, reason?:string, modsDir?:string, gamePath?:string, consoleOn?:boolean}}
+ */
+function ensureModInstalled(ROOT, gamePath, paths) {
+  try {
+    if (!gamePath) return { ok: false, reason: 'kein Spielpfad gesetzt' };
+    const bin = binDir(gamePath);
+    if (!bin) return { ok: false, reason: 'Pal\\Binaries nicht gefunden' };
+    const mods = ue4ssModsDir(bin);
+    if (!mods) return { ok: false, reason: 'UE4SS nicht installiert — bitte Setup ausführen' };
+
+    const src = path.join(ROOT, 'ue4ss-mod', 'PalOverlayTracker');
+    if (!fs.existsSync(src)) return { ok: false, reason: 'Mod-Quelle fehlt' };
+    const dst = path.join(mods, 'PalOverlayTracker');
+    copyDirSync(src, dst);
+    patchModPaths(dst, paths);
+
+    // enabled.txt sicherstellen (leere Datei aktiviert die Mod in UE4SS)
+    try {
+      const en = path.join(dst, 'enabled.txt');
+      if (!fs.existsSync(en)) fs.writeFileSync(en, '', 'utf8');
+    } catch { /* egal */ }
+
+    // mods.txt-Eintrag ergänzen, falls vorhanden
+    try {
+      const modsTxt = path.join(mods, 'mods.txt');
+      if (fs.existsSync(modsTxt)) {
+        const t = fs.readFileSync(modsTxt, 'utf8');
+        if (!/PalOverlayTracker/.test(t)) {
+          fs.writeFileSync(modsTxt, t.replace(/\s*$/, '\r\n') + 'PalOverlayTracker : 1\r\n', 'utf8');
+        }
+      }
+    } catch { /* egal */ }
+
+    const consoleOn = enableUe4ssConsole(bin);
+    return { ok: true, modsDir: mods, gamePath, consoleOn };
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+}
+
+module.exports = { detectPalworld, runSetup, ensureModInstalled, binDir, ue4ssModsDir };
+

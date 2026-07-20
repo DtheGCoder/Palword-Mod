@@ -16,6 +16,18 @@ const path = require('path');
 
 const REPO_RAW = 'https://raw.githubusercontent.com/DtheGCoder/Palword-Mod/main/package.json';
 const REPO_URL = 'https://github.com/DtheGCoder/Palword-Mod';
+const REPO_API = 'https://api.github.com/repos/DtheGCoder/Palword-Mod';
+
+/** Semver-Vergleich: >0 wenn a neuer als b, <0 wenn älter, 0 wenn gleich. */
+function cmpVer(a, b) {
+  const pa = String(a).replace(/^v/i, '').split(/[.\-+]/).map((n) => parseInt(n, 10) || 0);
+  const pb = String(b).replace(/^v/i, '').split(/[.\-+]/).map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
 
 function git(ROOT, args, timeout = 20000) {
   return new Promise((resolve) => {
@@ -30,13 +42,24 @@ function isGitRepo(ROOT) {
 }
 
 async function remoteVersion() {
+  // 1) Neuestes veröffentlichtes GitHub-Release (Tag) — funktioniert auch dann,
+  //    wenn die Version in package.json nicht mit hochgezählt wurde.
+  try {
+    const res = await fetch(REPO_API + '/releases/latest', {
+      headers: { 'User-Agent': 'PalPilot-Updater', Accept: 'application/vnd.github+json' },
+    });
+    if (res.ok) {
+      const rel = await res.json();
+      const tag = String(rel.tag_name || rel.name || '').replace(/^v/i, '').trim();
+      if (tag) return tag;
+    }
+  } catch { /* weiter zum Fallback */ }
+  // 2) Fallback: Version aus package.json auf main.
   try {
     const res = await fetch(REPO_RAW, { headers: { 'User-Agent': 'PalPilot-Updater' } });
-    if (!res.ok) return null;
-    return (await res.json()).version || null;
-  } catch {
-    return null;
-  }
+    if (res.ok) return (await res.json()).version || null;
+  } catch { /* offline */ }
+  return null;
 }
 
 /**
@@ -51,7 +74,7 @@ async function checkAndUpdate(ROOT, prog = () => {}) {
   if (!isGitRepo(ROOT)) {
     prog('check', 'Prüfe auf neue Version…');
     const latest = await remoteVersion();
-    if (latest && latest !== current) {
+    if (latest && cmpVer(latest, current) > 0) {
       return { mode: 'manual', updated: false, current, latest, url: REPO_URL };
     }
     return { mode: 'manual', updated: false, upToDate: true, current };
@@ -69,7 +92,15 @@ async function checkAndUpdate(ROOT, prog = () => {}) {
   const local = (await git(ROOT, ['rev-parse', 'HEAD'])).out;
   const remote = (await git(ROOT, ['rev-parse', `origin/${branch}`])).out;
   if (!local || !remote) return { skipped: true, reason: 'Vergleich fehlgeschlagen' };
-  if (local === remote) return { updated: false, upToDate: true, current };
+  if (local === remote) {
+    // Commits sind aktuell — trotzdem prüfen, ob ein neueres Release getaggt
+    // wurde (z. B. wenn package.json nicht hochgezählt wurde).
+    const latest = await remoteVersion();
+    if (latest && cmpVer(latest, current) > 0) {
+      return { mode: 'manual', updated: false, current, latest, url: REPO_URL + '/releases/latest' };
+    }
+    return { updated: false, upToDate: true, current, latest: latest || current };
+  }
 
   // Nur aktualisieren, wenn wir sauber vorspulen können (keine lokalen Änderungen überschreiben)
   const canFF = (await git(ROOT, ['merge-base', '--is-ancestor', 'HEAD', `origin/${branch}`])).ok;

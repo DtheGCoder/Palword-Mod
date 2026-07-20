@@ -29,7 +29,9 @@ async function main() {
   state.mock = !!st.flags?.mock || new URLSearchParams(location.search).has('mock');
   state.completed = st.settings.map?.completed || {};
   const root = st.paths?.root;
-  state.assetBase = root ? 'file:///' + String(root).replace(/\\/g, '/').replace(/\/$/, '') + '/' : '../../';
+  // WICHTIG: Pfad URL-kodieren — der Ordner "PAL Overlay" enthält ein Leerzeichen,
+  // sonst laden die per String gebauten Icon-URLs (file://) nicht.
+  state.assetBase = root ? 'file:///' + encodeURI(String(root).replace(/\\/g, '/').replace(/\/$/, '')) + '/' : '../../';
   document.body.classList.toggle('windowed', state.windowed);
   document.body.style.setProperty('--dim', st.settings.overlay?.dimBackground ?? 0.6);
 

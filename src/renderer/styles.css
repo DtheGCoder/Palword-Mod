@@ -828,6 +828,12 @@ span.pal-ico.ph { display: grid; place-items: center; color: var(--acc); font-we
 #hudCluster.corner-bottom-left { bottom: 20px; left: 20px; align-items: flex-start; flex-direction: column-reverse; }
 #hudCluster.corner-custom { position: absolute; align-items: flex-start; }
 
+/* Auf der großen Karte (F6) hat die Minimap nichts zu suchen — sie würde
+   die Karte nur überlappen. Ausnahme: aktiver Platzierungs-Modus, damit man
+   sie per Drag neu positionieren kann. */
+body.mode-map #hudCluster { display: none !important; }
+body.mode-map.placing-hud #hudCluster { display: flex !important; }
+
 /* Minimap-Platzierungs-Modus: NUR den Cluster interaktiv machen (nicht das
    ganze Vollbild-#hudRoot — sonst schluckt es alle Klicks inkl. Toolbar). */
 body.placing-hud #hudCluster { pointer-events: auto; cursor: grab; }

@@ -18,7 +18,7 @@ const { JsonStore } = require('./store');
 const { PositionEngine } = require('./position');
 const { InventoryBridge } = require('./inventory');
 const { trayIconPng } = require('./png');
-const { detectPalworld, runSetup } = require('./setup');
+const { detectPalworld, runSetup, ensureModInstalled } = require('./setup');
 const { checkAndUpdate } = require('./updater');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -207,6 +207,40 @@ function registerHotkeys() {
   tryReg(hk.toggleHud, () => applyMode(mode === 'hidden' ? 'hud' : 'hidden'), 'HUD');
   tryReg(hk.quickWaypoint, () => win && win.webContents.send('ui:hotkey', 'quick-waypoint'), 'Schnell-Wegpunkt');
   tryReg(hk.stopNav, () => win && win.webContents.send('ui:hotkey', 'stop-nav'), 'Navigation stoppen');
+}
+
+// ------------------------------------------------------- Mod-Auto-Refresh
+
+/**
+ * Spielt die PalOverlayTracker-Mod bei jedem Start frisch ein, sobald der
+ * Palworld-Pfad bekannt ist. Ist noch kein Pfad gespeichert, wird er einmalig
+ * automatisch erkannt (eindeutiger Treffer) und übernommen.
+ */
+async function autoRefreshMod() {
+  let gamePath = settingsStore.data.game?.path || null;
+  if (!gamePath) {
+    const found = await detectPalworld().catch(() => []);
+    if (found.length === 1) {
+      gamePath = found[0];
+      const next = settingsStore.patch({ game: { path: gamePath } });
+      if (win && !win.isDestroyed()) win.webContents.send('settings:changed', next);
+      console.log('[mod] Palworld automatisch erkannt: ' + gamePath);
+    } else if (found.length > 1) {
+      console.log('[mod] Mehrere Palworld-Installationen gefunden — bitte im Setup wählen.');
+      return;
+    } else {
+      console.log('[mod] Palworld-Pfad noch unbekannt — bitte einmal das Setup ausführen.');
+      return;
+    }
+  }
+  const r = ensureModInstalled(ROOT, gamePath, settingsStore.data.position);
+  if (r.ok) {
+    settingsStore.patch({ game: { path: gamePath, setupDone: true } });
+    console.log('[mod] Mod aktuell eingespielt → ' + r.modsDir);
+    console.log('[mod] UE4SS-Konsole: ' + (r.consoleOn ? 'aktiviert' : 'bereits aktiv/unverändert'));
+  } else {
+    console.log('[mod] Mod-Refresh nicht möglich: ' + r.reason);
+  }
 }
 
 // ---------------------------------------------------------------- Tray
@@ -401,6 +435,13 @@ if (!gotLock) {
     console.log(' Inventar aus: ' + P.invFile);
     console.log(IS_MOCK ? ' (Demo: simulierte Position)' : ' → Starte Palworld mit der Mod; im Spiel wird der Status grün.');
     console.log('==================================================\n');
+
+    // Mod-Auto-Refresh: sobald der Palworld-Pfad bekannt ist (oder eindeutig
+    // erkannt wird), die Mod bei jedem Start frisch & korrekt einspielen —
+    // ohne Nutzer-Interaktion. Verhindert veraltete/kaputte Mod-Dateien.
+    if (!IS_MOCK) {
+      autoRefreshMod().catch((e) => console.warn('[mod] Auto-Refresh übersprungen:', e.message));
+    }
 
     if (IS_SMOKE) {
       setTimeout(() => {

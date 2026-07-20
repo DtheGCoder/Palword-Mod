@@ -3,7 +3,7 @@
  * (Ebenen + Pal-Browser), rechtes Panel (Navigation + Wegpunkte + Route),
  * Bottombar und Einstellungs-Dialog. Komplett deutsch.
  */
-import { state, on, emit, saveWaypoints, patchSettings } from './state.js';
+import { state, on, emit, saveWaypoints, patchSettings, asset } from './state.js';
 import { fmtGame, fmtDist } from './transform.js';
 import { svg, CATEGORIES, ELEMENTS, SPAWN_COLORS } from './icons.js';
 import { setRegion, focusWorld, centerOnPlayer, addWaypointAt, startMeasure, clearMeasure, rebuildOverlays } from './mapview.js';
@@ -183,7 +183,7 @@ function renderSearch(q) {
     if (results.length > 18) break;
     if (pal.name.toLowerCase().includes(ql) || (pal.nameEn || '').toLowerCase().includes(ql)) {
       results.push({
-        group: 'Pals', iconImg: pal.icon, icon: 'sphere',
+        group: 'Pals', iconImg: asset(pal.icon), icon: 'sphere',
         label: pal.name, sub: (pal.elements || []).map((e) => ELEMENTS[e]?.label || e).join(' · '),
         action: () => { togglePalSpawn(pal.id, true); flyToPalSpawn(pal.id); },
       });
@@ -342,7 +342,7 @@ function renderPalList() {
       return `<span class="el-badge" style="--c:${el.color}" title="${esc(el.label)}"></span>`;
     }).join('');
     const icon = p.icon
-      ? `<img class="pal-ico" src="${esc(p.icon)}" loading="lazy" onerror="this.outerHTML='<span class=\\'pal-ico ph\\'>${esc(p.name[0])}</span>'">`
+      ? `<img class="pal-ico" src="${esc(asset(p.icon))}" loading="lazy" onerror="this.outerHTML='<span class=\\'pal-ico ph\\'>${esc(p.name[0])}</span>'">`
       : `<span class="pal-ico ph">${esc(p.name[0] || '?')}</span>`;
     return `<button class="pal-row ${active ? 'active' : ''}" data-pal="${esc(p.id)}">
       ${icon}
