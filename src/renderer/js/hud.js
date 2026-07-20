@@ -4,11 +4,15 @@
  */
 import { state, on } from './state.js';
 import { fmtGame, fmtDist } from './transform.js';
+import { smoothAngle } from './transform.js';
 import { svg } from './icons.js';
 
 let canvas, ctx, cluster, banner, arrowEl, nameEl, metaEl, statusDot, regionEl, coordsEl;
 const images = {};       // regionId → HTMLImageElement
 let timer = null;
+let raf = 0;
+let lastFrameAt = 0;
+let rp = null;           // interpolierte Kartenmitte + Blickrichtung (flüssiges Gleiten)
 
 export function initHud() {
   const root = document.getElementById('hudRoot');
@@ -46,10 +50,15 @@ export function initHud() {
   applyHudSettings();
   on('settings', applyHudSettings);
   on('toast', showToast);
-  // setInterval statt requestAnimationFrame: läuft auch weiter, wenn der
-  // Compositor das Fenster als "verdeckt" einstuft (Overlay-Sonderfall).
+  // Flüssiges Rendern via requestAnimationFrame (bis ~60 fps, synchron zum
+  // Bildschirm). Als Absicherung ein langsamer Watchdog-Timer: stuft der
+  // Compositor das Overlay-Fenster als „verdeckt" ein und pausiert rAF, zeichnet
+  // der Timer trotzdem weiter (Overlay-Sonderfall).
+  cancelAnimationFrame(raf);
+  const frame = (ts) => { raf = requestAnimationFrame(frame); lastFrameAt = ts; tick(); };
+  raf = requestAnimationFrame(frame);
   clearInterval(timer);
-  timer = setInterval(tick, 33);
+  timer = setInterval(() => { if (performance.now() - lastFrameAt > 120) tick(); }, 100);
 }
 
 function applyHudSettings() {
@@ -188,11 +197,20 @@ function draw() {
     regionImage(p.region);
   }
 
+  // Sanfte Interpolation von Kartenmitte + Blickrichtung. Die Live-Position
+  // kommt nur ~5×/s — durch das Nachziehen pro Frame gleitet die Karte flüssig,
+  // ohne höhere Datenrate und ohne Mehrkosten (nur eine Lerp).
+  if (!rp || rp.region !== p.region) rp = { wx: p.wx, wy: p.wy, heading: p.headingDeg || 0, region: p.region };
+  else if (Math.hypot(p.wx - rp.wx, p.wy - rp.wy) > 20000) { rp.wx = p.wx; rp.wy = p.wy; } // Teleport/Schnellreise → sofort springen
+  rp.wx += (p.wx - rp.wx) * 0.22;
+  rp.wy += (p.wy - rp.wy) * 0.22;
+  rp.heading = smoothAngle(rp.heading, p.headingDeg || 0, 0.22);
+
   const coverM = 620 / (hud.zoom || 2.4);              // Radius-Abdeckung in Metern
   const radiusImgPx = (coverM * 100) / rm.cmPerPx;
   const k = (R - 3) / radiusImgPx;                     // Screen-px pro Bild-px
-  const pp = rm.worldToPx(p.wx, p.wy);
-  const rot = hud.rotate ? (-(p.headingDeg || 0) * Math.PI) / 180 : 0;
+  const pp = rm.worldToPx(rp.wx, rp.wy);
+  const rot = hud.rotate ? (-(rp.heading || 0) * Math.PI) / 180 : 0;
 
   if (img) {
     ctx.save();
@@ -295,7 +313,7 @@ function draw() {
   }
 
   // Spieler (Mitte)
-  const headScreen = hud.rotate ? 0 : ((p.headingDeg || 0) * Math.PI) / 180;
+  const headScreen = hud.rotate ? 0 : ((rp.heading || 0) * Math.PI) / 180;
   ctx.save();
   ctx.translate(R, R);
   ctx.rotate(headScreen);

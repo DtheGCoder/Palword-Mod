@@ -101,8 +101,17 @@ function recompute() {
   const dist = distMeters(p, wp);
   const bearing = bearingWorld(p, wp);
   const rel = angleDelta(p.headingDeg ?? bearing, bearing);
-  const speed = Math.max(2.5, p.speedMps || 8);
-  state.navInfo = { wp, dist, bearing, rel, etaS: dist / speed, sameRegion };
+  // ETA über die ANNÄHERUNGSGESCHWINDIGKEIT: die Bewegungsgeschwindigkeit auf
+  // die Richtung zum Ziel projiziert (v · cos(Winkel Blick↔Ziel)). Läuft man vom
+  // Ziel weg, ist sie ≤ 0 → keine sinnvolle Ankunftszeit (statt fälschlich zu
+  // sinken). Leicht geglättet gegen Zittern.
+  const speedMag = Math.max(0, p.speedMps || 0);
+  const closing = speedMag * Math.cos(((rel || 0) * Math.PI) / 180);
+  const prevClosing = state.navInfo && state.navInfo.wp && state.navInfo.wp.id === wp.id
+    ? (state.navInfo._closing ?? closing) : closing;
+  const closingS = prevClosing * 0.7 + closing * 0.3;
+  const etaS = closingS > 0.5 ? dist / closingS : Infinity;
+  state.navInfo = { wp, dist, bearing, rel, etaS, sameRegion, _closing: closingS };
 
   if (sameRegion && dist < ARRIVE_M && lastArrivedId !== wp.id) {
     lastArrivedId = wp.id;

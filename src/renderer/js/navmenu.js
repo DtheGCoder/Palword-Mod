@@ -25,24 +25,37 @@ const PICKERS = [
 export function initNavMenu() {
   state.ui.navPick = state.ui.navPick || 'waypoints';
   on('nav', render);
-  on('player', () => { if (!state.navInfo) renderPickerList(); updateCompass(); });
-  on('regionChanged', render);
+  on('player', () => { if (state.navInfo) updateCompass(); else updatePickerDistances(); });
+  on('regionChanged', () => { lastSig = null; render(); });
+  on('waypoints', () => { if (!state.navInfo) { lastSig = null; render(); } });
   render();
 }
+
+// Signatur dessen, was die DOM-STRUKTUR bestimmt. Nur bei Änderung wird die
+// Karte neu aufgebaut — sonst nur Werte in-place aktualisiert (kein Flackern,
+// keine neu startenden Einblend-Animationen).
+let lastSig = null;
+let pickerItems = [];
 
 function render() {
   const card = $('#navCard');
   if (!card) return;
   const info = state.navInfo;
+  const sig = info ? `a:${info.wp.id}:${info.sameRegion}` : `i:${state.ui.navPick}`;
+  const structChanged = sig !== lastSig || card.childElementCount === 0;
+  lastSig = sig;
   card.classList.toggle('has-target', !!info);
 
   if (info) {
-    card.innerHTML = activeTemplate(info);
-    $('#btnNavStop').onclick = () => stopNav();
-    const rt = state.settings.map.nav.routeIds || [];
-    if (rt.length > 1) bindRouteProgress();
+    if (structChanged) {
+      card.innerHTML = activeTemplate(info);
+      $('#btnNavStop').onclick = () => stopNav();
+      $('#btnNavShow') && ($('#btnNavShow').onclick = showTarget);
+      const rt = state.settings.map.nav.routeIds || [];
+      if (rt.length > 1) bindRouteProgress();
+    }
     updateCompass();
-  } else {
+  } else if (structChanged) {
     card.innerHTML = idleTemplate();
     PICKERS.forEach((p) => {
       const el = card.querySelector(`.np-tab[data-k="${p.key}"]`);
@@ -155,6 +168,7 @@ function renderPickerList() {
   }
 
   const shown = dests.slice(0, 60);
+  pickerItems = shown;
   body.innerHTML = `<div class="np-list">${shown.map((d, i) => `
     <button class="np-item" data-i="${i}" style="--c:${d.color || '#46c8ff'};--delay:${Math.min(i * 22, 500)}ms">
       <span class="np-ico">${svg(d.icon || 'pin', 15)}</span>
@@ -167,6 +181,22 @@ function renderPickerList() {
   body.querySelectorAll('.np-item').forEach((el) => {
     const d = shown[Number(el.dataset.i)];
     el.onclick = () => startNavTo(d);
+  });
+}
+
+// Aktualisiert nur die Distanz-Zahlen im Ziel-Wähler in-place (kein Neuaufbau,
+// keine neu startenden Animationen) — sorgt für ruhige, flackerfreie Anzeige.
+function updatePickerDistances() {
+  const body = $('#npBody');
+  if (!body || state.ui.navPick === 'map') return;
+  const p = state.player;
+  if (!p) return;
+  body.querySelectorAll('.np-item').forEach((el) => {
+    const d = pickerItems[Number(el.dataset.i)];
+    if (!d) return;
+    const dm = d.region === p.region ? distMeters(p, d) : Infinity;
+    const span = el.querySelector('.np-dist');
+    if (span) span.textContent = Number.isFinite(dm) ? fmtDist(dm) : (state.data.regions?.[d.region]?.title || '');
   });
 }
 
@@ -201,9 +231,3 @@ function updateCompass() {
   const hero = document.querySelector('.nav-hero');
   if (hero) hero.classList.toggle('near', info.dist < 60);
 }
-
-// Show-Button in aktiver Karte
-on('nav', () => {
-  const s = $('#btnNavShow');
-  if (s) s.onclick = showTarget;
-});
