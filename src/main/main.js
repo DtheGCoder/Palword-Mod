@@ -390,6 +390,18 @@ if (!gotLock) {
     createTray();
     if (!IS_WINDOWED) registerHotkeys();
 
+    // Immer sichtbares Start-Feedback (sonst wirkt die Konsole nach dem
+    // einmaligen „Downloading Electron binary…" wie eingefroren).
+    const P = settingsStore.data.position;
+    console.log('\n==================== PalPilot ====================');
+    console.log(' Overlay läuft' + (IS_MOCK ? ' (Demo/Mock)' : '') + '.');
+    console.log(' Modus       : ' + (IS_WINDOWED ? 'Fenster' : 'Overlay über dem Spiel'));
+    console.log(' Hotkeys     : F6 Karte · F7 HUD · F8 Wegpunkt · F9 Stopp');
+    console.log(' Position aus: ' + P.ue4ssFile);
+    console.log(' Inventar aus: ' + P.invFile);
+    console.log(IS_MOCK ? ' (Demo: simulierte Position)' : ' → Starte Palworld mit der Mod; im Spiel wird der Status grün.');
+    console.log('==================================================\n');
+
     if (IS_SMOKE) {
       setTimeout(() => {
         console.log('[SMOKE] Fenster erstellt, Renderer geladen — OK');

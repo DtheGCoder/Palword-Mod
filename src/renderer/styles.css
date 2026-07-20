@@ -828,9 +828,10 @@ span.pal-ico.ph { display: grid; place-items: center; color: var(--acc); font-we
 #hudCluster.corner-bottom-left { bottom: 20px; left: 20px; align-items: flex-start; flex-direction: column-reverse; }
 #hudCluster.corner-custom { position: absolute; align-items: flex-start; }
 
-/* Minimap-Platzierungs-Modus */
-body.placing-hud #hudRoot { pointer-events: auto; }
-body.placing-hud #hudCluster { cursor: grab; }
+/* Minimap-Platzierungs-Modus: NUR den Cluster interaktiv machen (nicht das
+   ganze Vollbild-#hudRoot — sonst schluckt es alle Klicks inkl. Toolbar). */
+body.placing-hud #hudCluster { pointer-events: auto; cursor: grab; }
+body.placing-hud #hudCluster * { pointer-events: none; }
 body.placing-hud #hudCluster:active { cursor: grabbing; }
 body.placing-hud #minimap {
   outline: 2px dashed var(--acc);
@@ -841,7 +842,8 @@ body.placing-hud #minimap {
   position: fixed;
   top: 82px; left: 50%;
   transform: translateX(-50%);
-  z-index: 320;
+  z-index: 650;
+  pointer-events: auto;
   display: flex; align-items: center; gap: 12px;
   padding: 10px 14px;
   border-radius: 12px;
@@ -1006,8 +1008,76 @@ input[type="checkbox"] { accent-color: var(--acc); width: 15px; height: 15px; }
 select { cursor: pointer; }
 select option { background: #0d1826; }
 .set-status { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
-.hotkey-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; }
-.hotkey-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--txt-dim); }
+.hotkey-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
+.hotkey-row { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--txt-dim); padding: 8px 11px; background: rgba(255,255,255,0.03); border: 1px solid var(--brd); border-radius: 9px; }
+
+/* ---------------- Einstellungen: Tab-Layout ---------------- */
+.settings-card { width: min(860px, 95vw); height: min(680px, 90vh); max-height: 90vh; padding: 0; }
+.settings-card header { padding: 16px 22px; }
+.settings-layout { display: flex; flex: 1; min-height: 0; }
+.settings-nav {
+  width: 210px; flex: none;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 14px 12px;
+  border-right: 1px solid var(--brd);
+  background: rgba(0, 0, 0, 0.15);
+}
+.snav {
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 13px;
+  border: 0; border-radius: 10px;
+  background: transparent;
+  color: var(--txt-dim);
+  font: 500 13px var(--font);
+  text-align: left; cursor: pointer;
+  transition: all 0.13s;
+}
+.snav .ico { flex: none; opacity: 0.8; }
+.snav:hover { background: rgba(126, 190, 255, 0.08); color: var(--txt); }
+.snav.active { background: rgba(70, 200, 255, 0.14); color: var(--acc); font-weight: 600; }
+.snav.active .ico { opacity: 1; }
+.settings-content { flex: 1; overflow-y: auto; padding: 22px 26px; }
+.spanel { display: none; animation: heroIn 0.22s ease; }
+.spanel.active { display: block; }
+.spanel h4 {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 600; color: var(--txt);
+  text-transform: none; letter-spacing: 0;
+  margin-bottom: 6px;
+}
+.spanel h4 .ico { color: var(--acc); }
+.spanel h5 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px;
+  color: var(--txt-dim); margin: 22px 0 10px;
+}
+.set-lead { color: var(--txt-dim); font-size: 12.5px; line-height: 1.55; margin: 4px 0 14px; }
+.set-card {
+  padding: 12px 14px; border-radius: 11px;
+  background: rgba(255, 255, 255, 0.03); border: 1px solid var(--brd);
+  font-size: 12.5px; color: var(--txt-dim); line-height: 1.6;
+}
+.set-card b { color: var(--txt); }
+.set-toggles { display: flex; flex-direction: column; gap: 4px; }
+.check.big {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border-radius: 9px;
+  font-size: 13px; color: var(--txt); cursor: pointer;
+  transition: background 0.12s;
+}
+.check.big:hover { background: rgba(255, 255, 255, 0.03); }
+.set-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin-top: 4px; }
+.set-grid2 label { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; color: var(--txt-dim); }
+.set-field {
+  display: grid; grid-template-columns: 150px 1fr 56px; align-items: center; gap: 12px;
+  padding: 9px 0;
+}
+.set-field > label { font-size: 12.5px; color: var(--txt); }
+.set-field output { font-size: 12px; color: var(--acc); font-variant-numeric: tabular-nums; text-align: right; }
+.set-field select { width: 100%; }
+.set-advanced { margin-top: 16px; }
+.set-advanced summary { cursor: pointer; color: var(--txt-dim); font-size: 12px; padding: 6px 0; }
+.set-advanced summary:hover { color: var(--txt); }
+.set-advanced .set-row { margin-top: 8px; }
 
 /* ---------------- Setup-Assistent ---------------- */
 #setupModal {

@@ -108,16 +108,20 @@ export function toggleHudPlacement(on) {
   }
 }
 
+let dragAttached = false;
 function attachDrag() {
+  if (dragAttached) return;   // nur einmal registrieren
+  dragAttached = true;
   let sx, sy, ox, oy, dragging = false;
   const down = (e) => {
+    if (!placing) return;
     dragging = true;
     const r = cluster.getBoundingClientRect();
     sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
     e.preventDefault();
   };
   const move = (e) => {
-    if (!dragging) return;
+    if (!dragging || !placing) return;
     const size = parseInt(cluster.style.getPropertyValue('--size')) || 280;
     const x = Math.max(0, Math.min(window.innerWidth - size, ox + e.clientX - sx));
     const y = Math.max(0, Math.min(window.innerHeight - size, oy + e.clientY - sy));

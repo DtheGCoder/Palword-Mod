@@ -14,6 +14,7 @@ import { runUpdateCheck } from './updater.js';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const setOut = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
 
 export function initPanels() {
   buildTopbar();
@@ -558,98 +559,123 @@ function buildBottombar() {
 
 function buildSettings() {
   $('#settingsModal').innerHTML = `
-    <div class="modal-card">
-      <header><h2>${svg('gear', 18)} Einstellungen</h2>
-        <button class="icon-btn" id="setClose">${svg('x', 16)}</button></header>
-      <div class="modal-body">
+    <div class="modal-card settings-card">
+      <header>
+        <h2>${svg('gear', 18)} Einstellungen</h2>
+        <button class="icon-btn" id="setClose">${svg('x', 16)}</button>
+      </header>
+      <div class="settings-layout">
+        <nav class="settings-nav" id="settingsNav">
+          <button class="snav active" data-panel="position">${svg('crosshair', 16)}<span>Position</span></button>
+          <button class="snav" data-panel="hud">${svg('eye', 16)}<span>HUD & Minimap</span></button>
+          <button class="snav" data-panel="map">${svg('layers', 16)}<span>Karte</span></button>
+          <button class="snav" data-panel="keys">${svg('gear', 16)}<span>Hotkeys</span></button>
+          <button class="snav" data-panel="data">${svg('folder', 16)}<span>Daten</span></button>
+          <button class="snav" data-panel="about">${svg('info', 16)}<span>Über & Updates</span></button>
+        </nav>
+        <div class="settings-content">
 
-        <section>
-          <h4>Positionsquelle</h4>
-          <div class="set-row">
-            <button class="btn btn-acc sm" id="setOpenSetup">${svg('compass', 12)} Spiel-Setup starten (automatisch)</button>
-            <span class="hint">lädt UE4SS, installiert die Mod, stellt den Fenstermodus um</span>
+          <div class="spanel active" data-panel="position">
+            <h4>${svg('crosshair', 14)} Live-Position einrichten</h4>
+            <p class="set-lead">Wähle deinen Palworld-Ordner — der Assistent lädt UE4SS, installiert die Mod und stellt den Fenstermodus ein. Alles automatisch.</p>
+            <button class="btn btn-acc" id="setOpenSetup">${svg('compass', 13)} Spiel-Setup starten</button>
+            <div class="set-card" style="margin-top:14px">
+              <div class="set-status" id="setUe4ss"><span class="dot"></span> UE4SS-Mod (Echtzeit · Singleplayer & Koop)</div>
+              <div class="set-status" id="setRest" style="margin-top:8px"><span class="dot"></span> Dedicated-Server REST-API</div>
+            </div>
+            <h5>Dedicated-Server (optional)</h5>
+            <label class="check big"><input type="checkbox" id="setRestOn"> REST-API verwenden</label>
+            <div class="set-grid2">
+              <label>Host <input id="setRestHost" type="text" placeholder="127.0.0.1"></label>
+              <label>Port <input id="setRestPort" type="number" placeholder="8212" min="1" max="65535"></label>
+              <label>AdminPassword <input id="setRestPass" type="password" placeholder="•••••"></label>
+              <label>Spieler <input id="setRestPlayer" type="text" placeholder="leer = erster"></label>
+            </div>
+            <details class="set-advanced">
+              <summary>Erweitert: Positionsdatei</summary>
+              <div class="set-row">
+                <input id="setUeFile" type="text" spellcheck="false">
+                <button class="btn sm" id="setUeOpen">${svg('folder', 12)} Ordner</button>
+              </div>
+            </details>
+            <p class="hint">Ohne Live-Quelle: Rechtsklick auf die Karte → „Ich stehe hier".</p>
           </div>
-          <div class="set-row">
-            <div class="set-status" id="setUe4ss"><span class="dot"></span> UE4SS-Mod (Echtzeit, Singleplayer & Koop)</div>
-          </div>
-          <div class="set-row">
-            <label>Positionsdatei</label>
-            <input id="setUeFile" type="text" spellcheck="false">
-            <button class="btn sm" id="setUeOpen">${svg('folder', 12)} Ordner</button>
-          </div>
-          <div class="set-row"><div class="set-status" id="setRest"><span class="dot"></span> Dedicated-Server REST-API</div></div>
-          <div class="set-grid">
-            <label class="check"><input type="checkbox" id="setRestOn"> aktiv</label>
-            <input id="setRestHost" type="text" placeholder="Host (z.B. 127.0.0.1)">
-            <input id="setRestPort" type="number" placeholder="8212" min="1" max="65535">
-            <input id="setRestPass" type="password" placeholder="AdminPassword">
-            <input id="setRestPlayer" type="text" placeholder="Spielername (leer = erster)">
-          </div>
-          <div class="hint">Ohne Live-Quelle: Rechtsklick auf die Karte → „Ich stehe hier".</div>
-        </section>
 
-        <section>
-          <h4>HUD (im Spiel)</h4>
-          <div class="set-grid">
-            <label class="check"><input type="checkbox" id="setHudMini"> Minimap</label>
-            <label class="check"><input type="checkbox" id="setHudBanner"> Navigations-Banner</label>
-            <label class="check"><input type="checkbox" id="setHudRotate"> Karte dreht mit Blickrichtung</label>
-            <label>Ecke
+          <div class="spanel" data-panel="hud">
+            <h4>${svg('eye', 14)} HUD im Spiel</h4>
+            <div class="set-toggles">
+              <label class="check big"><input type="checkbox" id="setHudMini"> Minimap anzeigen</label>
+              <label class="check big"><input type="checkbox" id="setHudBanner"> Navigations-Banner</label>
+              <label class="check big"><input type="checkbox" id="setHudRotate"> Karte dreht mit Blickrichtung</label>
+            </div>
+            <h5>Position & Größe</h5>
+            <div class="set-row">
+              <button class="btn btn-acc" id="setHudPlace">${svg('target', 13)} Minimap frei positionieren</button>
+              <span class="hint" id="setHudPosNote"></span>
+            </div>
+            <div class="set-field"><label>Standard-Ecke</label>
               <select id="setHudCorner">
                 <option value="top-right">oben rechts</option>
                 <option value="top-left">oben links</option>
                 <option value="bottom-right">unten rechts</option>
                 <option value="bottom-left">unten links</option>
               </select>
-            </label>
-            <label>Größe <input type="range" id="setHudSize" min="200" max="440" step="10"></label>
-            <label>Zoom <input type="range" id="setHudZoom" min="1" max="5" step="0.2"></label>
-            <label>Deckkraft <input type="range" id="setHudOpacity" min="0.4" max="1" step="0.05"></label>
+            </div>
+            <div class="set-field"><label>Größe</label><input type="range" id="setHudSize" min="200" max="440" step="10"><output id="outHudSize"></output></div>
+            <div class="set-field"><label>Zoom</label><input type="range" id="setHudZoom" min="1" max="5" step="0.2"><output id="outHudZoom"></output></div>
+            <div class="set-field"><label>Deckkraft</label><input type="range" id="setHudOpacity" min="0.4" max="1" step="0.05"><output id="outHudOpacity"></output></div>
           </div>
-          <div class="set-row">
-            <button class="btn sm btn-acc" id="setHudPlace">${svg('target', 12)} Minimap frei positionieren</button>
-            <span class="hint" id="setHudPosNote"></span>
-          </div>
-        </section>
 
-        <section>
-          <h4>Karte</h4>
-          <div class="set-grid">
-            <label class="check"><input type="checkbox" id="setFollow"> Karte folgt Spieler</label>
-            <label class="check"><input type="checkbox" id="setTrail"> Bewegungsspur anzeigen</label>
-            <label class="check"><input type="checkbox" id="setGrid2"> Koordinatenraster</label>
-            <label>Abdunklung hinter Karte <input type="range" id="setDim" min="0" max="0.9" step="0.05"></label>
+          <div class="spanel" data-panel="map">
+            <h4>${svg('layers', 14)} Große Karte</h4>
+            <div class="set-toggles">
+              <label class="check big"><input type="checkbox" id="setFollow"> Karte folgt dem Spieler</label>
+              <label class="check big"><input type="checkbox" id="setTrail"> Bewegungsspur anzeigen</label>
+              <label class="check big"><input type="checkbox" id="setGrid2"> Koordinatenraster</label>
+            </div>
+            <div class="set-field"><label>Abdunklung hinter der Karte</label><input type="range" id="setDim" min="0" max="0.9" step="0.05"><output id="outDim"></output></div>
           </div>
-        </section>
 
-        <section>
-          <h4>Hotkeys</h4>
-          <div class="hotkey-list" id="setHotkeys"></div>
-          <div class="hint">Änderbar in settings.json (Datenordner unten).</div>
-        </section>
+          <div class="spanel" data-panel="keys">
+            <h4>${svg('gear', 14)} Tastenkürzel</h4>
+            <div class="hotkey-list" id="setHotkeys"></div>
+            <p class="hint">Belegung änderbar in <b>settings.json</b> (Tab „Daten" → Einstellungs-Ordner).</p>
+          </div>
 
-        <section>
-          <h4>Daten</h4>
-          <div id="setDataInfo" class="hint"></div>
-          <div class="set-row">
-            <button class="btn sm" id="setOpenData">${svg('folder', 12)} Daten-Ordner</button>
-            <button class="btn sm" id="setOpenUser">${svg('folder', 12)} Einstellungs-Ordner</button>
+          <div class="spanel" data-panel="data">
+            <h4>${svg('folder', 14)} Daten & Ordner</h4>
+            <div class="set-card" id="setDataInfo"></div>
+            <div class="set-row" style="margin-top:12px">
+              <button class="btn sm" id="setOpenData">${svg('folder', 12)} Daten-Ordner</button>
+              <button class="btn sm" id="setOpenUser">${svg('folder', 12)} Einstellungs-Ordner</button>
+            </div>
           </div>
-        </section>
 
-        <section>
-          <h4>PalPilot & Updates</h4>
-          <div class="hint" id="setAbout"></div>
-          <div class="set-grid">
-            <label class="check"><input type="checkbox" id="setAutoUpd"> Beim Start automatisch von GitHub aktualisieren</label>
+          <div class="spanel" data-panel="about">
+            <h4>${svg('info', 14)} Über PalPilot</h4>
+            <div class="set-card" id="setAbout"></div>
+            <h5>Updates</h5>
+            <label class="check big"><input type="checkbox" id="setAutoUpd"> Beim Start automatisch von GitHub aktualisieren</label>
+            <div class="set-row" style="margin-top:12px">
+              <button class="btn btn-acc sm" id="setUpdNow">${svg('download', 12)} Jetzt nach Updates suchen</button>
+            </div>
+            <div class="set-row" style="margin-top:20px">
+              <button class="btn sm danger" id="setQuit">${svg('x', 12)} Overlay beenden</button>
+            </div>
           </div>
-          <div class="set-row">
-            <button class="btn sm btn-acc" id="setUpdNow">${svg('download', 12)} Jetzt nach Updates suchen</button>
-            <button class="btn sm danger" id="setQuit">${svg('x', 12)} Overlay beenden</button>
-          </div>
-        </section>
+
+        </div>
       </div>
     </div>`;
+
+  // Tab-Umschaltung
+  $('#settingsNav').querySelectorAll('.snav').forEach((btn) => {
+    btn.onclick = () => {
+      $('#settingsNav .snav.active')?.classList.remove('active');
+      btn.classList.add('active');
+      document.querySelectorAll('.spanel').forEach((p) => p.classList.toggle('active', p.dataset.panel === btn.dataset.panel));
+    };
+  });
 
   $('#setClose').onclick = () => toggleSettings(false);
   $('#settingsModal').addEventListener('click', (e) => {
@@ -683,9 +709,9 @@ function buildSettings() {
   bind('#setHudBanner', null, (el) => patchSettings({ hud: { navBanner: el.checked } }));
   bind('#setHudRotate', null, (el) => patchSettings({ hud: { rotate: el.checked } }));
   bind('#setHudCorner', null, (el) => patchSettings({ hud: { corner: el.value } }));
-  bind('#setHudSize', null, (el) => patchSettings({ hud: { size: Number(el.value) } }), 'input');
-  bind('#setHudZoom', null, (el) => patchSettings({ hud: { zoom: Number(el.value) } }), 'input');
-  bind('#setHudOpacity', null, (el) => patchSettings({ hud: { opacity: Number(el.value) } }), 'input');
+  bind('#setHudSize', null, (el) => { patchSettings({ hud: { size: Number(el.value) } }); setOut('outHudSize', el.value + ' px'); }, 'input');
+  bind('#setHudZoom', null, (el) => { patchSettings({ hud: { zoom: Number(el.value) } }); setOut('outHudZoom', Number(el.value).toFixed(1) + '×'); }, 'input');
+  bind('#setHudOpacity', null, (el) => { patchSettings({ hud: { opacity: Number(el.value) } }); setOut('outHudOpacity', Math.round(el.value * 100) + ' %'); }, 'input');
   bind('#setFollow', null, (el) => patchSettings({ map: { followPlayer: el.checked } }));
   bind('#setTrail', null, (el) => { patchSettings({ map: { showTrail: el.checked } }); rebuildOverlays(); });
   bind('#setGrid2', null, (el) => { patchSettings({ map: { showGrid: el.checked } }); rebuildOverlays(); });
@@ -693,6 +719,7 @@ function buildSettings() {
   bind('#setDim', null, (el) => {
     patchSettings({ overlay: { dimBackground: Number(el.value) } });
     document.body.style.setProperty('--dim', el.value);
+    setOut('outDim', Math.round(el.value * 100) + ' %');
   }, 'input');
 
   on('posStatus', renderSettingsStatus);
@@ -730,7 +757,11 @@ function syncSettingsForm() {
     return `<div class="hotkey-row"><span>${labels[k] || k}</span><kbd>${esc(v)}</kbd></div>`;
   }).join('');
   $('#setAutoUpd').checked = s.updates?.auto !== false;
-  $('#setAbout').innerHTML = `Version ${esc(state.version || '?')} · Modus: ${state.mock ? 'Demo (Mock)' : (state.windowed ? 'Fenster' : 'Overlay')}`;
+  setOut('outHudSize', (s.hud.size || 280) + ' px');
+  setOut('outHudZoom', Number(s.hud.zoom || 2.4).toFixed(1) + '×');
+  setOut('outHudOpacity', Math.round((s.hud.opacity ?? 0.95) * 100) + ' %');
+  setOut('outDim', Math.round((s.overlay.dimBackground ?? 0.6) * 100) + ' %');
+  $('#setAbout').innerHTML = `<b>PalPilot</b> v${esc(state.version || '?')}<br>Modus: ${state.mock ? 'Demo (Mock)' : (state.windowed ? 'Fenster' : 'Overlay')}`;
   renderSettingsStatus();
   renderDataInfo();
 }
