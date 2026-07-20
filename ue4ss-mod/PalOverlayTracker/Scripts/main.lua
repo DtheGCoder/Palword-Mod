@@ -193,61 +193,80 @@ local function currentCount(itemId)
     return total
 end
 
-local function addItem(inv, itemId, count)
-    if count <= 0 then return end
-    local fid = FName(itemId)
-    -- Mehrere bekannte Wege probieren; der erste ohne Lua-Fehler „gewinnt".
-    local tries = {
-        { "RequestAddItem_ForDebug(3)", function() return inv:RequestAddItem_ForDebug(fid, count, false) end },
-        { "AddItem_ServerInternal(5)",  function() return inv:AddItem_ServerInternal(fid, count, false, 0.0, true) end },
-        { "AddItem_ServerInternal(4)",  function() return inv:AddItem_ServerInternal(fid, count, false, 0.0) end },
-        { "AddItem_ServerInternal(3)",  function() return inv:AddItem_ServerInternal(fid, count, false) end },
-    }
-    for _, t in ipairs(tries) do
-        local ok, err = pcall(t[2])
-        log(string.format("ADD %s x%d via %s -> %s", tostring(itemId), count, t[1], ok and "ok" or ("FEHLER: " .. tostring(err))))
-        if ok then return true end
+-- Methoden zum HINZUFÜGEN. RequestAddItem_ForDebug meldet auf manchen Builds
+-- „ok", ändert aber NICHTS — deshalb wird der Erfolg unten per Bestand
+-- VERIFIZIERT und notfalls die nächste Methode probiert.
+local ADD_METHODS = {
+    { "AddItem_ServerInternal(5)", function(inv, fid, n) inv:AddItem_ServerInternal(fid, n, false, 0.0, true) end },
+    { "AddItem_ServerInternal(4)", function(inv, fid, n) inv:AddItem_ServerInternal(fid, n, false, 0.0) end },
+    { "AddItem_ServerInternal(3)", function(inv, fid, n) inv:AddItem_ServerInternal(fid, n, false) end },
+    { "RequestAddItem_ForDebug",   function(inv, fid, n) inv:RequestAddItem_ForDebug(fid, n, false) end },
+}
+
+-- Methoden zum ENTFERNEN.
+local REMOVE_METHODS = {
+    { "IncidentBase:Consume", function(inv, fid, n)
+        local inc = StaticFindObject("/Script/Pal.Default__PalIncidentBase")
+        if inc then inc:RequestConsumeInventoryItem(inv, fid, n) end
+    end },
+    { "AddItem_ServerInternal(-,5)", function(inv, fid, n) inv:AddItem_ServerInternal(fid, -n, false, 0.0, true) end },
+    { "RequestAddItem_ForDebug(-)",  function(inv, fid, n) inv:RequestAddItem_ForDebug(fid, -n, false) end },
+}
+
+-- Ausstehender Wunsch-Bestand für EIN Item. Wird jeden Tick verifiziert und
+-- notfalls mit der nächsten Methode nachgebessert — solange bis CountItemNum
+-- den Zielwert bestätigt. So ist es egal, welche Funktion der jeweilige
+-- Palworld-Build tatsächlich akzeptiert.
+local pending = nil
+local PENDING_WAIT = 3      -- ~0.6 s Wartezeit pro Versuch (safeTick alle 200 ms)
+local PENDING_MAXTRIES = 8
+
+local function processPending()
+    if not pending then return end
+    local inv = getLocalInventoryData()
+    if not valid(inv) then return end
+    local cur = currentCount(pending.id)
+    if cur == pending.target then
+        log(string.format("OK: %s ist jetzt %d (Ziel erreicht).", pending.id, cur))
+        pending = nil
+        pcall(writeInventory)
+        return
     end
-    return false
+    if pending.wait and pending.wait > 0 then pending.wait = pending.wait - 1; return end
+    pending.total = (pending.total or 0) + 1
+    if pending.total > PENDING_MAXTRIES then
+        log(string.format("Aufgegeben: %s bleibt bei %d (Ziel %d) — keine Methode wirkte.", pending.id, cur, pending.target))
+        pending = nil
+        pcall(writeInventory)
+        return
+    end
+    local delta = pending.target - cur
+    local methods = (delta > 0) and ADD_METHODS or REMOVE_METHODS
+    pending.idx = (pending.idx or 0) + 1
+    if pending.idx > #methods then pending.idx = 1 end   -- zyklisch erneut
+    local m = methods[pending.idx]
+    local ok, err = pcall(function() m[2](inv, FName(pending.id), math.abs(delta)) end)
+    log(string.format("%s %s x%d via %s -> %s (ist %d, Ziel %d)",
+        delta > 0 and "ADD" or "REMOVE", tostring(pending.id), math.abs(delta), m[1],
+        ok and "ok" or ("FEHLER " .. tostring(err)), cur, pending.target))
+    pending.wait = PENDING_WAIT
 end
 
-local function consumeItem(inv, itemId, count)
-    if count <= 0 then return end
-    local fid = FName(itemId)
-    -- 1) Offizielle Consume-Funktion liegt auf UPalIncidentBase (nicht PalUtility!)
-    local inc = StaticFindObject("/Script/Pal.Default__PalIncidentBase")
-    local tries = {}
-    if inc then
-        tries[#tries + 1] = { "IncidentBase:RequestConsumeInventoryItem", function() return inc:RequestConsumeInventoryItem(inv, fid, count) end }
-    end
-    -- 2) Negatives „Add" entfernt in vielen Builds ebenfalls.
-    tries[#tries + 1] = { "RequestAddItem_ForDebug(-)", function() return inv:RequestAddItem_ForDebug(fid, -count, false) end }
-    tries[#tries + 1] = { "AddItem_ServerInternal(-,5)", function() return inv:AddItem_ServerInternal(fid, -count, false, 0.0, true) end }
-    for _, t in ipairs(tries) do
-        local ok, err = pcall(t[2])
-        log(string.format("REMOVE %s x%d via %s -> %s", tostring(itemId), count, t[1], ok and "ok" or ("FEHLER: " .. tostring(err))))
-        if ok then return true end
-    end
-    return false
-end
-
+-- Nimmt einen Befehl entgegen und setzt daraus einen Ziel-Bestand. Ausführung
+-- + Verifikation übernimmt processPending() pro Tick.
 local function applyCommand(op, id, count)
     local inv = getLocalInventoryData()
-    if not valid(inv) then log("BEFEHL ignoriert — kein lokales Inventar (im Spiel/in der Welt sein!)"); return end
-    log(string.format("BEFEHL empfangen: %s id=%s count=%s", tostring(op), tostring(id), tostring(count)))
-    if op == "add" then
-        addItem(inv, id, count)
-    elseif op == "set" then
-        local cur = currentCount(id)
-        log("  aktueller Bestand: " .. tostring(cur))
-        if count > cur then addItem(inv, id, count - cur)
-        elseif count < cur then consumeItem(inv, id, cur - count)
-        else log("  Menge unveraendert — nichts zu tun") end
-    elseif op == "remove" then
-        local cur = currentCount(id)
-        if cur > 0 then consumeItem(inv, id, cur) end
-    end
-    pcall(writeInventory)   -- sofortige Rueckmeldung ans Overlay (soweit sofort sichtbar)
+    if not valid(inv) then log("BEFEHL ignoriert — kein lokales Inventar (in der Welt sein!)"); return end
+    local cur = currentCount(id)
+    local target
+    if op == "add" then target = cur + count
+    elseif op == "set" then target = count
+    elseif op == "remove" then target = 0
+    else return end
+    if target < 0 then target = 0 end
+    log(string.format("BEFEHL %s id=%s count=%s | ist=%d ziel=%d", tostring(op), tostring(id), tostring(count), cur, target))
+    if target == cur then pcall(writeInventory); return end
+    pending = { id = id, target = target, idx = 0, wait = 0, total = 0 }
 end
 
 -- cmd-Datei: Zeile 1 = seq, danach "op|id|count"
@@ -304,6 +323,9 @@ local function safeTick()
     -- Position (bewährt, günstig)
     local okp, json = pcall(snapshotPos, pc)
     if okp and json then writeAtomic(OUT_POS, json) end
+
+    -- Ausstehende Inventar-Befehle ausführen & verifizieren (selbstkorrigierend)
+    pcall(processPending)
 
     -- Inventar NUR lesen, wenn die Position gerade sauber ging (Pawn ist in der
     -- Welt, kein Ladescreen/Menü). Seltener + mit Not-Aus. So werden Inventar-
