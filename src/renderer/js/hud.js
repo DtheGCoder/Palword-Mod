@@ -12,7 +12,10 @@ const images = {};       // regionId → HTMLImageElement
 let timer = null;
 let raf = 0;
 let lastFrameAt = 0;
+let lastDrawTs = 0;
 let rp = null;           // interpolierte Kartenmitte + Blickrichtung (flüssiges Gleiten)
+let vignette = null;     // gecachter Vignetten-Gradient (nur bei Größenänderung neu)
+let vignetteR = 0;
 
 export function initHud() {
   const root = document.getElementById('hudRoot');
@@ -50,12 +53,16 @@ export function initHud() {
   applyHudSettings();
   on('settings', applyHudSettings);
   on('toast', showToast);
-  // Flüssiges Rendern via requestAnimationFrame (bis ~60 fps, synchron zum
-  // Bildschirm). Als Absicherung ein langsamer Watchdog-Timer: stuft der
-  // Compositor das Overlay-Fenster als „verdeckt" ein und pausiert rAF, zeichnet
-  // der Timer trotzdem weiter (Overlay-Sonderfall).
+  // Flüssiges Rendern via requestAnimationFrame, aber auf ~33 fps gedrosselt
+  // (reicht mit der Positions-Interpolation völlig und spart auf 120/144-Hz-
+  // Monitoren massiv Leistung). Watchdog-Timer zeichnet weiter, falls der
+  // Compositor rAF pausiert (Overlay als „verdeckt" eingestuft).
   cancelAnimationFrame(raf);
-  const frame = (ts) => { raf = requestAnimationFrame(frame); lastFrameAt = ts; tick(); };
+  const frame = (ts) => {
+    raf = requestAnimationFrame(frame);
+    lastFrameAt = ts;
+    if (ts - lastDrawTs >= 30) { lastDrawTs = ts; tick(); }
+  };
   raf = requestAnimationFrame(frame);
   clearInterval(timer);
   timer = setInterval(() => { if (performance.now() - lastFrameAt > 120) tick(); }, 100);
@@ -79,6 +86,7 @@ function applyHudSettings() {
   canvas.width = size * dpr;
   canvas.height = size * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  vignette = null;   // Größe/Transform geändert → Gradient neu erzeugen
 }
 
 // Platzierungs-Modus: Minimap frei per Drag positionieren.
@@ -218,14 +226,17 @@ function draw() {
     if (rot) ctx.rotate(rot);
     ctx.scale(k, k);
     ctx.translate(-pp.px, -pp.py);
-    ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingQuality = 'medium';
     ctx.drawImage(img, 0, 0);
     ctx.restore();
-    // Vignette
-    const grad = ctx.createRadialGradient(R, R, R * 0.55, R, R, R);
-    grad.addColorStop(0, 'rgba(5,10,18,0)');
-    grad.addColorStop(1, 'rgba(5,10,18,0.55)');
-    ctx.fillStyle = grad;
+    // Vignette (gecachter Gradient — nur bei Größenänderung neu erzeugen)
+    if (!vignette || vignetteR !== R) {
+      vignette = ctx.createRadialGradient(R, R, R * 0.55, R, R, R);
+      vignette.addColorStop(0, 'rgba(5,10,18,0)');
+      vignette.addColorStop(1, 'rgba(5,10,18,0.55)');
+      vignetteR = R;
+    }
+    ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, size, size);
   } else {
     ctx.fillStyle = '#122132';

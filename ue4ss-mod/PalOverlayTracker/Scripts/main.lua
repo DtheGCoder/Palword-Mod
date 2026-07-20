@@ -26,6 +26,9 @@ local function valid(o) return o and o.IsValid and o:IsValid() end
 local function jesc(s) return tostring(s):gsub('\\', '\\\\'):gsub('"', '\\"') end
 local function log(s) print("[PalOverlayTracker] " .. tostring(s) .. "\n") end
 
+local cachedLevel = "unknown"   -- gecachter Level-Name (siehe snapshotPos)
+local levelRefresh = 0
+
 local function writeAtomic(path, text)
     local tmp = path .. ".tmp"
     local f = io.open(tmp, "w")
@@ -40,11 +43,20 @@ end
 -- Liefert den APalPlayerController des LOKALEN Spielers (nicht von Gästen!).
 -- Wichtig: IsPlayerController() ist für alle Spieler true — wir prüfen
 -- ausdrücklich IsLocalPlayerController().
+-- PERFORMANCE: der gefundene Controller wird gecacht. FindAllOf (teurer
+-- Objekt-Scan) läuft nur noch, wenn der Cache ungültig wird (Level-/Weltwechsel).
+local cachedPC = nil
 local function getLocalController()
+    if valid(cachedPC) and cachedPC.IsLocalPlayerController then
+        local ok, isLocal = pcall(function() return cachedPC:IsLocalPlayerController() end)
+        if ok and isLocal then return cachedPC end
+    end
+    cachedPC = nil
     local pcs = FindAllOf("PalPlayerController") or FindAllOf("PlayerController")
     if not pcs then return nil end
     for _, pc in ipairs(pcs) do
         if valid(pc) and pc.IsLocalPlayerController and pc:IsLocalPlayerController() then
+            cachedPC = pc
             return pc
         end
     end
@@ -79,15 +91,20 @@ local function snapshotPos(pc)
     if not valid(pawn) then return nil end
     local loc = pawn:K2_GetActorLocation()
     local rot = pc:GetControlRotation()
-    local lvl = "unknown"
-    local ok, world = pcall(function() return pc:GetWorld() end)
-    if ok and valid(world) then
-        local ok2, name = pcall(function() return world:GetFName():ToString() end)
-        if ok2 and name then lvl = name end
+    -- Level-Name ändert sich fast nie → nur alle paar Sekunden abfragen (spart
+    -- GetWorld()/GetFName():ToString() bei jedem Tick).
+    levelRefresh = levelRefresh - 1
+    if levelRefresh <= 0 then
+        levelRefresh = 15
+        local ok, world = pcall(function() return pc:GetWorld() end)
+        if ok and valid(world) then
+            local ok2, name = pcall(function() return world:GetFName():ToString() end)
+            if ok2 and name then cachedLevel = name end
+        end
     end
     return string.format(
         '{"x":%.1f,"y":%.1f,"z":%.1f,"yaw":%.2f,"level":"%s","t":%d}',
-        loc.X, loc.Y, loc.Z, rot.Yaw, jesc(lvl), os.time())
+        loc.X, loc.Y, loc.Z, rot.Yaw, jesc(cachedLevel), os.time())
 end
 
 -- ------------------------------------------------------------ Inventar lesen
