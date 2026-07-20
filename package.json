@@ -1,7 +1,7 @@
 {
   "name": "pal-overlay",
   "productName": "PalPilot",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Palworld Ingame-Map-Overlay: Komplette Karte, Live-Position, Wegpunkte mit Navigator, Pal-Spawns",
   "main": "src/main/main.js",
   "author": "Damian",

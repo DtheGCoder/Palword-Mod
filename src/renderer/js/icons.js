@@ -92,3 +92,59 @@ export const ELEMENTS = {
 
 /** Farbpalette für aktivierte Pal-Spawn-Ebenen. */
 export const SPAWN_COLORS = ['#46c8ff', '#ffd34d', '#5fe0a0', '#ff6b7a', '#b98cff', '#ff9f43', '#7fe3ff', '#9be15d', '#ffc1e3', '#e8c39e'];
+
+// ------------------------------------------------------------ Ressourcen-Finder
+// „Wo finde ich welche Ressource?" — dieselbe Idee wie der Pal-Spawn-Finder,
+// nur für Erze/Ressourcen, Eier, Angelplätze und Skillfrucht-Bäume. Die Marker
+// tragen den Ressourcentyp im Namen (z. B. „Coal Cluster", „Sulfur").
+
+/** Deutsche Anzeigenamen für die häufigsten Ressourcen/Eier. */
+export const RES_LABELS = {
+  Coal: 'Kohle', Ore: 'Erz', 'Pure Quartz': 'Reiner Quarz', Sulfur: 'Schwefel',
+  Chromite: 'Chromit', 'Crude Oil': 'Rohöl', 'Hexolite Quartz': 'Hexolith-Quarz',
+  Soralite: 'Soralit', 'Nightstar Sand': 'Nachtstern-Sand',
+  'Sakura Egg': 'Sakura-Ei', 'Desert Egg': 'Wüsten-Ei', 'Frozen Egg': 'Frost-Ei',
+  'Grass Egg': 'Gras-Ei', 'Sunreach Egg': 'Sonnen-Ei', 'Feybreak Egg': 'Feenbruch-Ei',
+  'Volcano Egg': 'Vulkan-Ei',
+};
+
+/** Marker-Kategorien, die „Fundorte" sind, mit Icon. `grouped`: nach Namen aufsplitten. */
+export const RESOURCE_SOURCES = [
+  { cat: 'ores', icon: 'rock', grouped: true, title: 'Erze & Ressourcen' },
+  { cat: 'eggs', icon: 'egg', grouped: true, title: 'Eier' },
+  { cat: 'fruits', icon: 'fruit', grouped: false, title: 'Skillfrucht-Bäume' },
+  { cat: 'fishing', icon: 'fish', grouped: false, title: 'Angelplätze' },
+];
+
+/** Normalisiert den Ressourcennamen (z. B. „Coal Cluster" → „Coal"). */
+export function normResourceName(cat, name) {
+  if (cat === 'ores') return String(name || '').replace(/\s*Cluster$/i, '').trim();
+  return String(name || '').trim();
+}
+
+export function resourceKey(cat, normName) { return cat + '|' + (normName || '*'); }
+
+/** Baut die Liste wählbarer Ressourcen für die aktuelle Region (mit Anzahl). */
+export function buildResourceCatalog(markers, region) {
+  const out = [];
+  for (const src of RESOURCE_SOURCES) {
+    const list = markers[src.cat] || [];
+    if (src.grouped) {
+      const groups = new Map();
+      for (const mk of list) {
+        if ((mk.region || 'palpagos') !== region) continue;
+        const n = normResourceName(src.cat, mk.name);
+        if (!n) continue;
+        groups.set(n, (groups.get(n) || 0) + 1);
+      }
+      for (const [n, count] of groups) {
+        out.push({ key: resourceKey(src.cat, n), cat: src.cat, name: n, label: RES_LABELS[n] || n, icon: src.icon, count });
+      }
+    } else {
+      const count = list.filter((mk) => (mk.region || 'palpagos') === region).length;
+      if (count) out.push({ key: resourceKey(src.cat, null), cat: src.cat, name: '*', label: src.title, icon: src.icon, count });
+    }
+  }
+  out.sort((a, b) => b.count - a.count);
+  return out;
+}

@@ -17,6 +17,7 @@ export const state = {
   filters: {
     cats: new Set(['fasttravel', 'towers', 'bosses']),
     pals: new Map(),        // palId → farbindex
+    res: new Map(),         // Ressourcen-Schlüssel „cat|name" → farbindex
   },
   completed: {},            // markerId → true (Bosse/Türme abgehakt)
   measure: null,            // { a:{gx,gy}, b:{gx,gy}|null }

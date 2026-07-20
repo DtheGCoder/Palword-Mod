@@ -428,6 +428,8 @@ body.mode-map #mapRoot { display: block; }
 .pal-row.active { background: rgba(70, 200, 255, 0.13); border-left-color: var(--acc); }
 .pal-ico { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; background: #0d1a29; border: 1px solid var(--brd); }
 span.pal-ico.ph { display: grid; place-items: center; color: var(--acc); font-weight: 700; font-size: 13px; }
+.res-row { grid-template-columns: 32px 1fr auto; }
+span.pal-ico.res-ico { display: grid; place-items: center; color: var(--acc); }
 .pal-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pal-name i { font-style: normal; font-size: 10px; }
 .pal-els { display: flex; gap: 3px; }

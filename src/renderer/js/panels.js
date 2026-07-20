@@ -5,7 +5,7 @@
  */
 import { state, on, emit, saveWaypoints, patchSettings, asset } from './state.js';
 import { fmtGame, fmtDist } from './transform.js';
-import { svg, CATEGORIES, ELEMENTS, SPAWN_COLORS } from './icons.js';
+import { svg, CATEGORIES, ELEMENTS, SPAWN_COLORS, buildResourceCatalog } from './icons.js';
 import { setRegion, focusWorld, centerOnPlayer, addWaypointAt, startMeasure, clearMeasure, rebuildOverlays } from './mapview.js';
 import { navigateToWaypoint, stopNav, startRoute, deleteWaypoint, navState } from './nav.js';
 import { openSetup } from './setup.js';
@@ -25,10 +25,10 @@ export function initPanels() {
 
   on('waypoints', renderWaypointList);
   on('settings', () => renderRouteChips());
-  on('regionChanged', () => { renderRegionTabs(); renderLayerChips(); renderPalList(); });
+  on('regionChanged', () => { renderRegionTabs(); renderLayerChips(); renderPalList(); renderResourceList(); });
   on('posStatus', renderStatusChip);
   on('player', renderStatusChip);
-  on('dataLoaded', () => { renderLayerChips(); renderPalList(); renderDataInfo(); });
+  on('dataLoaded', () => { renderLayerChips(); renderPalList(); renderResourceList(); renderDataInfo(); });
 }
 
 // ------------------------------------------------------------ Topbar
@@ -262,10 +262,21 @@ function buildLeftPanel() {
       </div>
       <div class="active-pals" id="activePals"></div>
       <div class="pal-list" id="palList"></div>
+    </section>
+    <section class="panel-section grow">
+      <h3>${svg('rock', 15)} Ressourcen & Fundorte <span class="hint" id="resHint"></span></h3>
+      <div class="pal-search">
+        ${svg('search', 14)}
+        <input id="resSearch" type="text" placeholder="Erz, Ei, Ressource filtern…" spellcheck="false">
+      </div>
+      <div class="active-pals" id="activeRes"></div>
+      <div class="pal-list" id="resList"></div>
     </section>`;
   $('#palSearch').addEventListener('input', () => renderPalList());
+  $('#resSearch').addEventListener('input', () => renderResourceList());
   renderLayerChips();
   renderPalList();
+  renderResourceList();
 }
 
 function renderLayerChips() {
@@ -355,6 +366,69 @@ function renderPalList() {
     el.onclick = () => togglePalSpawn(el.dataset.pal);
   });
   renderActivePals();
+}
+
+// ------------------------------------------------------------ Ressourcen-Finder
+
+export function toggleResource(key, forceOn = false) {
+  const res = state.filters.res;
+  if (res.has(key) && !forceOn) {
+    res.delete(key);
+  } else if (!res.has(key)) {
+    const used = new Set(res.values());
+    let idx = 0;
+    while (used.has(idx) && idx < SPAWN_COLORS.length) idx++;
+    res.set(key, idx % SPAWN_COLORS.length);
+  }
+  emit('filters');
+  renderActiveResources();
+  renderResourceList();
+}
+
+function renderActiveResources() {
+  const box = $('#activeRes');
+  if (!box) return;
+  const cat = buildResourceCatalog(state.data.markers || {}, state.region);
+  const byKey = new Map(cat.map((r) => [r.key, r]));
+  const items = [...state.filters.res.entries()];
+  box.innerHTML = items.map(([key, colorIdx]) => {
+    const r = byKey.get(key);
+    const label = r?.label || key.split('|')[1] || key;
+    return `<button class="active-pal" data-res="${esc(key)}" style="--c:${SPAWN_COLORS[colorIdx % SPAWN_COLORS.length]}">
+      <span class="swatch"></span>${esc(label)}${svg('x', 12)}
+    </button>`;
+  }).join('');
+  box.style.display = items.length ? 'flex' : 'none';
+  box.querySelectorAll('.active-pal').forEach((el) => {
+    el.onclick = () => toggleResource(el.dataset.res);
+  });
+}
+
+function renderResourceList() {
+  const list = $('#resList');
+  if (!list) return;
+  const q = ($('#resSearch')?.value || '').trim().toLowerCase();
+  const catalog = buildResourceCatalog(state.data.markers || {}, state.region)
+    .filter((r) => !q || r.label.toLowerCase().includes(q) || r.name.toLowerCase().includes(q));
+  const hint = $('#resHint');
+  if (hint) hint.textContent = catalog.length ? '' : '(keine in dieser Region)';
+  if (!catalog.length) {
+    list.innerHTML = `<div class="hint" style="padding:10px">${q ? 'Keine Ressource gefunden.' : 'Keine Fundort-Daten für diese Region.'}</div>`;
+    renderActiveResources();
+    return;
+  }
+  list.innerHTML = catalog.map((r) => {
+    const active = state.filters.res.has(r.key);
+    return `<button class="pal-row res-row ${active ? 'active' : ''}" data-res="${esc(r.key)}">
+      <span class="pal-ico res-ico">${svg(r.icon, 15)}</span>
+      <span class="pal-name">${esc(r.label)}</span>
+      <span class="pal-num">${r.count}</span>
+    </button>`;
+  }).join('');
+  list.querySelectorAll('.res-row').forEach((el) => {
+    el.onclick = () => toggleResource(el.dataset.res);
+  });
+  renderActiveResources();
 }
 
 // ------------------------------------------------------------ Rechtes Panel

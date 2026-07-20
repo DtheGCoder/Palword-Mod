@@ -5,7 +5,7 @@
 /* global L */
 import { state, on, emit, saveWaypoints, newWaypointId, patchSettings } from './state.js';
 import { RegionMath, regionForWorld, fmtGame, fmtDist, distMeters } from './transform.js';
-import { svg, CATEGORIES, SPAWN_COLORS } from './icons.js';
+import { svg, CATEGORIES, SPAWN_COLORS, normResourceName } from './icons.js';
 import { navigateToPoint, navigateToWaypoint, stopNav } from './nav.js';
 
 let map = null;
@@ -13,6 +13,7 @@ let imageLayer = null;
 let gridLayer = null;
 let markerLayer = null;
 let spawnLayer = null;
+let resourceLayer = null;
 let spawnRenderer = null;
 let waypointLayer = null;
 let trailLine = null;
@@ -165,6 +166,7 @@ export function rebuildOverlays() {
   drawGrid();
   drawMarkers();
   drawSpawns();
+  drawResources();
   drawWaypoints();
   drawNavLine();
   drawPlayer(true);
@@ -271,6 +273,34 @@ function drawSpawns() {
     }
   }
   spawnLayer.addTo(map);
+}
+
+// „Wo finde ich welche Ressource?" — hebt die gewählten Fundorte (Erze, Eier,
+// Angelplätze, Skillfrucht-Bäume) auf der Karte hervor. Gleiche Idee wie die
+// Pal-Spawns, nur für Ressourcen. Canvas-Rendering hält es auch bei tausenden
+// Markern flüssig.
+function drawResources() {
+  if (resourceLayer) { resourceLayer.remove(); }
+  resourceLayer = L.layerGroup();
+  const markers = state.data.markers || {};
+  for (const [resKey, colorIdx] of state.filters.res) {
+    const color = SPAWN_COLORS[colorIdx % SPAWN_COLORS.length];
+    const sep = resKey.indexOf('|');
+    const cat = resKey.slice(0, sep);
+    const name = resKey.slice(sep + 1);
+    for (const mk of markers[cat] || []) {
+      if ((mk.region || 'palpagos') !== state.region) continue;
+      if (name !== '*' && normResourceName(cat, mk.name) !== name) continue;
+      resourceLayer.addLayer(L.circleMarker(worldToLl(mk.wx, mk.wy), {
+        renderer: spawnRenderer, radius: 9, stroke: false, fillColor: color, fillOpacity: 0.12, interactive: false,
+      }));
+      resourceLayer.addLayer(L.circleMarker(worldToLl(mk.wx, mk.wy), {
+        renderer: spawnRenderer, radius: 4.4, stroke: true, weight: 1.4, color: 'rgba(6,12,20,0.85)',
+        fillColor: color, fillOpacity: 0.95, interactive: false,
+      }));
+    }
+  }
+  resourceLayer.addTo(map);
 }
 
 function waypointIcon(wp, active) {
