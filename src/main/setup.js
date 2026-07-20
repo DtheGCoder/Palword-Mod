@@ -74,6 +74,24 @@ function ue4ssModsDir(bin) {
   return null;
 }
 
+// UE4SS-Loader-DLL neben der Spiel-EXE (Proxy, der UE4SS injiziert).
+const UE4SS_LOADERS = ['dwmapi.dll', 'ue4ss.dll', 'xinput1_3.dll', 'dinput8.dll', 'bitfix.dll'];
+function ue4ssLoaderDll(bin) {
+  return UE4SS_LOADERS.find((d) => fs.existsSync(path.join(bin, d))) || null;
+}
+
+// Ist der echte UE4SS-KERN vorhanden (nicht nur ein leerer Mods-Ordner)?
+// Ein alleiniger „Mods"-Ordner reicht NICHT — ohne Loader-DLL + UE4SS.dll
+// injiziert sich UE4SS nie und keine Lua-Mod läuft.
+function ue4ssCoreInstalled(bin) {
+  const hasLoader = !!ue4ssLoaderDll(bin);
+  const hasCore =
+    fs.existsSync(path.join(bin, 'ue4ss', 'UE4SS.dll')) ||
+    fs.existsSync(path.join(bin, 'UE4SS.dll')) ||
+    fs.existsSync(path.join(bin, 'ue4ss', 'dwmapi.dll'));
+  return hasLoader && hasCore;
+}
+
 // Findet die UE4SS-settings.ini (neues Layout: bin\ue4ss\, altes: bin\).
 function ue4ssSettingsFile(bin) {
   for (const p of [path.join(bin, 'ue4ss', 'UE4SS-settings.ini'), path.join(bin, 'UE4SS-settings.ini')]) {
@@ -117,8 +135,7 @@ function diagnoseUe4ss(bin, gamePath) {
   const platform = /WinGDK/i.test(bin) ? 'Xbox/GamePass (WinGDK)' : 'Steam (Win64)';
 
   // 1) Loader-DLL (Proxy) direkt neben der Spiel-EXE?
-  const loaders = ['dwmapi.dll', 'ue4ss.dll', 'xinput1_3.dll', 'dinput8.dll', 'bitfix.dll'];
-  const loaderDll = loaders.find((d) => fs.existsSync(path.join(bin, d))) || null;
+  const loaderDll = ue4ssLoaderDll(bin);
   if (!loaderDll) {
     problems.push('Keine UE4SS-Loader-DLL (z. B. dwmapi.dll) neben Palworld-Win64-Shipping.exe — UE4SS wird so NICHT geladen.');
   }
@@ -289,11 +306,16 @@ async function runSetup(ROOT, gamePath, prog, paths) {
   }
   prog('validate', 'ok', `Spiel gefunden: ${bin}`);
 
-  // 2) UE4SS
+  // 2) UE4SS — nur überspringen, wenn der echte KERN da ist (Loader-DLL +
+  //    UE4SS.dll). Ein bloßer „Mods"-Ordner reicht NICHT: genau das war der
+  //    Fall „Mod eingespielt, aber kein UE4SS-Fenster".
   let mods = ue4ssModsDir(bin);
-  if (mods) {
-    prog('ue4ss', 'ok', `UE4SS ist bereits installiert (${path.relative(bin, mods)}) — Download übersprungen.`);
+  if (mods && ue4ssCoreInstalled(bin)) {
+    prog('ue4ss', 'ok', `UE4SS ist vollständig installiert (${path.relative(bin, mods)}) — Download übersprungen.`);
   } else {
+    if (mods && !ue4ssCoreInstalled(bin)) {
+      prog('ue4ss', 'run', 'Mods-Ordner vorhanden, aber UE4SS-Kern/Loader-DLL fehlt — installiere UE4SS neu…');
+    }
     try {
       const r = await installUe4ss(bin, prog);
       mods = r.mods;

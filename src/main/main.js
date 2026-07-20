@@ -242,6 +242,40 @@ async function autoRefreshMod() {
     console.log('[mod] Mod-Refresh nicht möglich: ' + r.reason);
   }
   printUe4ssDiagnosis(r.diag);
+
+  // UE4SS-Kern/Loader fehlt → automatisch (einmalig) nachinstallieren, damit
+  // beim nächsten Palworld-Start das UE4SS-Fenster + die Mod wirklich laufen.
+  const needsUe4ss = !r.ok || (r.diag && (!r.diag.loaderDll || !r.diag.hasCore));
+  if (needsUe4ss) {
+    await autoInstallUe4ss(gamePath);
+  }
+}
+
+/**
+ * Lädt & installiert UE4SS automatisch von GitHub (nur wenn Kern fehlt).
+ * Fortschritt geht in die start.bat-Konsole UND als Toast ins Overlay.
+ */
+async function autoInstallUe4ss(gamePath) {
+  console.log('\n[mod] UE4SS fehlt oder ist unvollständig — installiere es jetzt automatisch von GitHub…');
+  const prog = (step, status, msg) => {
+    console.log(`[ue4ss:${status}] ${msg}`);
+    if (win && !win.isDestroyed()) win.webContents.send('setup:progress', { step, status, msg });
+  };
+  try {
+    const res = await runSetup(ROOT, gamePath, prog, settingsStore.data.position);
+    if (res.ok) {
+      const next = settingsStore.patch({ game: { path: gamePath, setupDone: true } });
+      if (win && !win.isDestroyed()) win.webContents.send('settings:changed', next);
+      console.log('[mod] UE4SS-Installation abgeschlossen. Bitte Palworld (neu) starten — es sollte nun ein UE4SS-Fenster erscheinen.');
+      // Frischen Status noch einmal ausgeben
+      const r2 = ensureModInstalled(ROOT, gamePath, settingsStore.data.position);
+      printUe4ssDiagnosis(r2.diag);
+    } else {
+      console.log('[mod] Automatische UE4SS-Installation fehlgeschlagen — bitte im Setup „Setup erneut ausführen" oder Steam-Workshop „UE4SS Experimental (Palworld)" abonnieren.');
+    }
+  } catch (e) {
+    console.log('[mod] UE4SS-Installation abgebrochen: ' + e.message);
+  }
 }
 
 /** Gibt einen gut lesbaren UE4SS-Statusbericht in die start.bat-Konsole aus. */
