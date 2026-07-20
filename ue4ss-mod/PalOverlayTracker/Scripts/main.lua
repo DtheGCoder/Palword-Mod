@@ -43,20 +43,15 @@ end
 -- Liefert den APalPlayerController des LOKALEN Spielers (nicht von Gästen!).
 -- Wichtig: IsPlayerController() ist für alle Spieler true — wir prüfen
 -- ausdrücklich IsLocalPlayerController().
--- PERFORMANCE: der gefundene Controller wird gecacht. FindAllOf (teurer
--- Objekt-Scan) läuft nur noch, wenn der Cache ungültig wird (Level-/Weltwechsel).
-local cachedPC = nil
+-- HINWEIS: bewusst KEIN Zwischenspeichern des Controllers über Ticks hinweg —
+-- ein gecachter UObject-Zeiger kann nach Level-/Weltwechseln „tot" sein und beim
+-- Zugriff einen nativen Absturz (ACCESS_VIOLATION) auslösen, den pcall NICHT
+-- abfangen kann. FindAllOf liefert immer nur aktuell gültige Objekte.
 local function getLocalController()
-    if valid(cachedPC) and cachedPC.IsLocalPlayerController then
-        local ok, isLocal = pcall(function() return cachedPC:IsLocalPlayerController() end)
-        if ok and isLocal then return cachedPC end
-    end
-    cachedPC = nil
     local pcs = FindAllOf("PalPlayerController") or FindAllOf("PlayerController")
     if not pcs then return nil end
     for _, pc in ipairs(pcs) do
         if valid(pc) and pc.IsLocalPlayerController and pc:IsLocalPlayerController() then
-            cachedPC = pc
             return pc
         end
     end
