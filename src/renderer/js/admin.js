@@ -178,7 +178,12 @@ function updateConnBadge() {
   badge.className = 'conn-badge ' + cls;
   badge.innerHTML = `<span class="dot"></span>${txt}`;
   const note = $('#adminModeNote');
-  if (note) note.textContent = state.mock ? '(Demo-Modus: Änderungen sind simuliert.)' : (s === 'off' ? '— starte Palworld mit der Inventar-Mod, um live zu bearbeiten.' : '');
+  if (note) {
+    if (state.mock) note.textContent = '(Demo-Modus: Änderungen sind simuliert.)';
+    else if (s === 'off') note.textContent = '— starte Palworld mit der Inventar-Mod, um live zu bearbeiten.';
+    else if (s === 'ok' && state.admin.inv && state.admin.inv.readable === false) note.textContent = '— Inventar konnte noch nicht ausgelesen werden (Menü offen? Ladescreen?). Hinzufügen funktioniert trotzdem.';
+    else note.textContent = '';
+  }
   const player = $('#adminPlayer');
   if (player) player.textContent = state.admin.inv?.player ? `Spieler: ${state.admin.inv.player}` : '';
 }

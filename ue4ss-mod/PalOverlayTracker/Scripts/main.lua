@@ -56,9 +56,18 @@ local function getLocalInventoryData()
     if not valid(pc) then return nil end
     local ps = pc.PlayerState
     if not valid(ps) then return nil end
-    local inv = ps.GetInventoryData and ps:GetInventoryData() or ps.InventoryData
+    -- Verschiedene Palworld-Builds legen die Inventardaten unterschiedlich ab.
+    -- Alle Zugriffe defensiv (pcall), damit ein Fehlversuch nie die Schleife
+    -- abbricht und das Schreiben der inv.json blockiert.
+    local inv
+    local ok = pcall(function()
+        if ps.GetInventoryData then inv = ps:GetInventoryData() end
+    end)
+    if (not ok) or (not valid(inv)) then
+        pcall(function() inv = ps.InventoryData end)
+    end
     if valid(inv) then return inv, ps end
-    return nil
+    return nil, ps
 end
 
 -- ------------------------------------------------------------ Position
@@ -86,31 +95,50 @@ end
 local function readInventory()
     local list, player = {}, "Spieler"
     local inv, ps = getLocalInventoryData()
-    if not inv then return list, player, 0 end
-    local okn, nm = pcall(function() return ps:GetPlayerName():ToString() end)
-    if okn and nm and nm ~= "" then player = nm end
+    if valid(ps) then
+        local okn, nm = pcall(function() return ps:GetPlayerName():ToString() end)
+        if okn and nm and nm ~= "" then player = nm end
+    end
+    if not valid(inv) then return list, player, 0 end
 
-    local helper = inv.InventoryMultiHelper
+    -- InventoryMultiHelper defensiv holen (Property ODER Getter, je nach Build).
+    local helper
+    pcall(function() helper = inv.InventoryMultiHelper end)
+    if not valid(helper) then
+        pcall(function() if inv.GetInventoryMultiHelper then helper = inv:GetInventoryMultiHelper() end end)
+    end
     if not valid(helper) then return list, player, 0 end
-    local containers = helper.Containers
+
+    local containers
+    pcall(function() containers = helper.Containers end)
+    if not containers then
+        pcall(function() if helper.GetContainers then containers = helper:GetContainers() end end)
+    end
+    if not containers then return list, player, 0 end
+
     local running, capacity = 0, 0
-    if containers then
-        for ci = 1, #containers do
-            local c = containers[ci]
-            if valid(c) then
-                local n = c.SlotNum or 0
-                capacity = capacity + n
-                for s = 0, n - 1 do
-                    local ok, slot = pcall(function() return c:Get(s) end)
-                    if ok and valid(slot) and not slot:IsEmpty() then
+    local count = 0
+    pcall(function() count = #containers end)
+    for ci = 1, count do
+        local c = containers[ci]
+        if valid(c) then
+            local n = 0
+            pcall(function() n = c.SlotNum or 0 end)
+            capacity = capacity + n
+            for s = 0, n - 1 do
+                local ok, slot = pcall(function() return c:Get(s) end)
+                if ok and valid(slot) then
+                    local empty = true
+                    pcall(function() empty = slot:IsEmpty() end)
+                    if not empty then
                         local okid, id = pcall(function() return slot:GetItemId().StaticId:ToString() end)
                         local okc, cnt = pcall(function() return slot:GetStackCount() end)
                         if okid and okc and id and id ~= "None" and cnt and cnt > 0 then
                             list[#list + 1] = { slot = running, id = id, count = cnt }
                         end
                     end
-                    running = running + 1
                 end
+                running = running + 1
             end
         end
     end
@@ -118,15 +146,19 @@ local function readInventory()
 end
 
 local function writeInventory()
+    -- IMMER schreiben — auch wenn (noch) kein Inventar lesbar ist. Nur so bleibt
+    -- die Datei „frisch" und der Admin-Editor zeigt „Verbunden" statt „keine
+    -- frischen Daten". Ein leeres Grid ist trotzdem nutzbar (Items hinzufügen).
     local ok, list, player, size = pcall(readInventory)
-    if not ok or type(list) ~= "table" then return end
+    if not ok or type(list) ~= "table" then list = {}; player = player or "Spieler"; size = 42 end
+    local readable = (ok and type(list) == "table") and 1 or 0
     local parts = {}
     for _, it in ipairs(list) do
         parts[#parts + 1] = string.format('{"slot":%d,"id":"%s","count":%d}', it.slot, jesc(it.id), it.count)
     end
     writeAtomic(OUT_INV, string.format(
-        '{"player":"%s","size":%d,"slots":[%s],"t":%d}',
-        jesc(player or "Spieler"), size or 42, table.concat(parts, ","), os.time()))
+        '{"player":"%s","size":%d,"ok":%d,"slots":[%s],"t":%d}',
+        jesc(player or "Spieler"), size or 42, readable, table.concat(parts, ","), os.time()))
 end
 
 -- ------------------------------------------------------------ Befehle ausführen

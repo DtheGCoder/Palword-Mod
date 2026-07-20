@@ -70,6 +70,7 @@ class InventoryBridge extends EventEmitter {
         player: j.player || null,
         size: j.size || (Array.isArray(j.slots) ? j.slots.length : 0),
         slots: Array.isArray(j.slots) ? j.slots : [],
+        readable: j.ok === undefined ? true : !!j.ok,
         at: Date.now(),
       });
     } catch {
