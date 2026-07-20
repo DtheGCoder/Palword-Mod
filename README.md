@@ -17,6 +17,9 @@ Ein transparentes Ingame-Overlay für **Palworld 1.0** mit kompletter interaktiv
 - 🔍 **Universalsuche** — Pal, Ort, Wegpunkt oder direkt Koordinaten („337, -395") eingeben
 - ⭕ **Rundes Minimap-HUD** — click-through über dem Spiel, wahlweise mitdrehend, Größe/Zoom/Ecke/Deckkraft einstellbar
 - 📏 Extras: Mess-Werkzeug, Koordinatenraster, Koordinaten kopieren, manuelle Position („Ich stehe hier"), Bewegungsspur, Demo-Modus
+- 🧩 **Frei positionierbare Minimap** (Einstellungen → „Minimap frei positionieren" → ziehen), plus Größe/Zoom/Deckkraft/Ecke, Spur & Raster an/aus
+- 🔌 **Diagnose-Popover** (Klick auf den Status oben rechts): zeigt Mod-/Server-Status, letzte Position, Level, Region und einen konkreten Tipp, falls keine Position ankommt
+- 🔄 **Auto-Updater**: prüft beim Start GitHub und aktualisiert git-Installationen automatisch (abschaltbar in den Einstellungen)
 
 ## Schnellstart — alles automatisch
 
@@ -115,7 +118,8 @@ privaten Gebrauch** gedacht. Palworld © Pocketpair.
 ## Troubleshooting
 
 - **Overlay unsichtbar über dem Spiel** → Spiel auf „Vollbild (Fenster)" stellen; F7 drücken (HUD evtl. ausgeblendet).
-- **Status bleibt „Keine Position"** → `Get-Content $env:TEMP\pal_overlay_pos.json` prüfen (UE4SS-Mod aktiv?); REST: Host/Port/Passwort prüfen (`http://host:8212/v1/api/players`).
+- **Status bleibt „Keine Position"** → oben rechts auf den Status klicken: das **Diagnose-Popover** sagt dir genau, woran es liegt. Häufigster Fall: Palworld läuft noch nicht bzw. du bist im Menü/Ladescreen (dort gibt es keine Position). Der Setup-Assistent verdrahtet die Mod-Dateipfade fest auf die Overlay-Pfade, ein TEMP-Mismatch kann also nicht mehr auftreten.
+- **„Downloading Electron…" beim ersten Start** → normal: Electron lädt beim ersten `npm install` einmalig seine Binärdatei (~100 MB). Danach nicht mehr. Einfach warten, bis das Fenster kommt.
 - **Karte fehlt / Platzhalter** → `npm run fetch-assets` erneut ausführen (Firewall/Proxy? Das Skript nutzt automatisch curl.exe als Fallback).
 - **Hotkeys reagieren nicht** → anderes Tool belegt F6–F9? In `settings.json` umbelegen, Overlay per Tray-Menü neu laden.
 - **Nach Palworld-Patch keine Position** → UE4SS-Build aktualisieren (siehe INSTALL.md); Karten/Daten mit `npm run fetch-assets -- --force` auffrischen.

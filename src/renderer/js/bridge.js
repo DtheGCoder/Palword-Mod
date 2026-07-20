@@ -16,9 +16,12 @@ const MOCK_SETTINGS = {
   map: {
     region: 'palpagos',
     followPlayer: true,
+    showTrail: true,
     nav: { activeWaypointId: null, routeIds: [], autoAdvance: true },
     manualPos: null,
   },
+  updates: { auto: true },
+  game: { path: null, setupDone: false },
   firstRun: true,
 };
 
@@ -53,6 +56,8 @@ export async function createBridge() {
       setupPick: () => b.setupPick(),
       setupRun: (p) => b.setupRun(p),
       onSetupProgress: (cb) => b.onSetupProgress(cb),
+      updateCheck: (opts) => b.updateCheck(opts),
+      onUpdateProgress: (cb) => b.onUpdateProgress(cb),
       invCommand: (cmds) => b.invCommand(cmds),
       onInventory: (cb) => b.onInventory(cb),
       onInvStatus: (cb) => b.onInvStatus(cb),
@@ -213,6 +218,8 @@ function createMock() {
       return { ok: true, gamePath: p, warnings: 0 };
     },
     onSetupProgress: (cb) => { (L.setup ??= []).push(cb); },
+    updateCheck: async () => ({ skipped: true, reason: 'Demo' }),
+    onUpdateProgress: () => {},
 
     // --- Mock-Inventar (Demo): simuliert die UE4SS-Inventar-Bridge ---
     invCommand: async (cmds) => {

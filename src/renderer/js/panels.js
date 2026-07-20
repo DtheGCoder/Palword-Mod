@@ -9,6 +9,8 @@ import { svg, CATEGORIES, ELEMENTS, SPAWN_COLORS } from './icons.js';
 import { setRegion, focusWorld, centerOnPlayer, addWaypointAt, startMeasure, clearMeasure, rebuildOverlays } from './mapview.js';
 import { navigateToWaypoint, stopNav, startRoute, deleteWaypoint, navState } from './nav.js';
 import { openSetup } from './setup.js';
+import { toggleHudPlacement } from './hud.js';
+import { runUpdateCheck } from './updater.js';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -40,16 +42,23 @@ function buildTopbar() {
       <div class="search-results" id="searchResults"></div>
     </div>
     <div class="top-actions">
-      <div class="status-chip" id="statusChip">${svg('crosshair', 14)}<span>–</span></div>
+      <button class="status-chip" id="statusChip" title="Verbindungsstatus & Diagnose">${svg('crosshair', 14)}<span>–</span>${svg('chevD', 12)}</button>
       <button class="icon-btn" id="btnCenter" title="Auf Spieler zentrieren">${svg('target', 17)}</button>
       <button class="icon-btn" id="btnSettings" title="Einstellungen">${svg('gear', 17)}</button>
       <button class="icon-btn danger" id="btnClose" title="Karte schließen (F6)">${svg('x', 17)}</button>
-    </div>`;
+    </div>
+    <div class="diag-pop" id="diagPop"></div>`;
 
   renderRegionTabs();
   $('#btnCenter').onclick = () => centerOnPlayer();
   $('#btnSettings').onclick = () => toggleSettings(true);
   $('#btnClose').onclick = () => state.bridge.setMode('hud');
+  $('#statusChip').onclick = (e) => { e.stopPropagation(); toggleDiag(); };
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#diagPop') && !e.target.closest('#statusChip')) $('#diagPop')?.classList.remove('open');
+  });
+  on('player', () => { if ($('#diagPop')?.classList.contains('open')) renderDiag(); });
+  on('posStatus', () => { if ($('#diagPop')?.classList.contains('open')) renderDiag(); });
 
   const input = $('#searchInput');
   input.addEventListener('input', () => renderSearch(input.value));
@@ -88,8 +97,65 @@ function renderStatusChip() {
   else if (p && p.source === 'manual') { cls = 'manual'; txt = 'Manuell'; }
   else if (p) { cls = 'stale'; txt = 'Signal verloren'; }
   chip.className = 'status-chip ' + cls;
-  chip.innerHTML = `<span class="dot"></span><span>${txt}</span>`;
-  chip.title = `UE4SS: ${st.ue4ss} · REST: ${st.rest}`;
+  chip.innerHTML = `<span class="dot"></span><span>${txt}</span>${svg('chevD', 12)}`;
+  chip.title = 'Verbindungsstatus & Diagnose';
+}
+
+function toggleDiag() {
+  const pop = $('#diagPop');
+  const open = !pop.classList.contains('open');
+  pop.classList.toggle('open', open);
+  if (open) renderDiag();
+}
+
+function renderDiag() {
+  const pop = $('#diagPop');
+  if (!pop) return;
+  const st = state.posStatus;
+  const p = state.player;
+  const now = Date.now();
+  const dot = (s) => `<span class="dot ${s}"></span>`;
+  const ago = (t) => {
+    if (!t) return 'nie';
+    const s = (now - t) / 1000;
+    return s < 1.5 ? 'gerade eben' : s < 60 ? `vor ${s.toFixed(0)} s` : `vor ${(s / 60).toFixed(0)} min`;
+  };
+  const ue = st.ue4ss, re = st.rest;
+  const src = state.mock ? 'Demo (simuliert)' : (st.ue4ss === 'ok' ? 'UE4SS-Mod' : st.rest === 'ok' ? 'Server (REST)' : p?.source === 'manual' ? 'Manuell' : '—');
+
+  // Konkreter, umsetzbarer Hinweis je nach Zustand
+  let hint, hintCls = 'info';
+  if (state.mock) { hint = 'Demo-Modus: simulierte Position. Im echten Overlay kommt sie aus der Mod/REST.'; }
+  else if (ue === 'ok' || re === 'ok') { hint = 'Alles läuft — Position wird live empfangen.'; hintCls = 'ok'; }
+  else if (ue === 'stale') { hint = 'Es kamen zuletzt Daten, jetzt nicht mehr. Läuft Palworld noch? Im Hauptmenü/Ladescreen gibt es keine Position.'; hintCls = 'warn'; }
+  else if (re === 'error') { hint = 'REST-API antwortet nicht — Host/Port/AdminPassword in den Einstellungen prüfen.'; hintCls = 'warn'; }
+  else {
+    hint = state.settings.game?.setupDone
+      ? 'Mod installiert, aber keine Daten. Starte Palworld — sobald du im Spiel bist, wird’s grün. Läuft UE4SS? (Ladescreen zählt nicht.)'
+      : 'Noch nicht eingerichtet. Klicke „Spiel-Setup" — Ordner wählen, Rest läuft automatisch.';
+    hintCls = 'warn';
+  }
+
+  const g = p ? state.math[p.region]?.worldToGame(p.wx, p.wy) : null;
+  pop.innerHTML = `
+    <div class="diag-title">${svg('crosshair', 14)} Positions-Diagnose</div>
+    <div class="diag-row">${dot(ue === 'ok' ? 'ok' : ue === 'stale' ? 'stale' : 'off')} UE4SS-Mod <b>${ue === 'ok' ? 'verbunden' : ue === 'stale' ? 'keine frischen Daten' : 'nicht aktiv'}</b></div>
+    <div class="diag-row">${dot(re === 'ok' ? 'ok' : re === 'error' ? 'err' : 'off')} Server-REST <b>${re === 'ok' ? 'verbunden' : re === 'error' ? 'Fehler' : 'aus'}</b></div>
+    <div class="diag-sep"></div>
+    <div class="diag-kv"><span>Quelle</span><b>${esc(src)}</b></div>
+    <div class="diag-kv"><span>Letzte Position</span><b>${ago(p?.at)}</b></div>
+    <div class="diag-kv"><span>Region</span><b>${p ? esc(state.data.regions?.[p.region]?.title || p.region) : '—'}</b></div>
+    <div class="diag-kv"><span>Level (Spiel)</span><b class="mono">${esc(p?.level || '—')}</b></div>
+    <div class="diag-kv"><span>Koordinaten</span><b class="mono">${g ? fmtGame(g) : '—'}</b></div>
+    <div class="diag-hint ${hintCls}">${esc(hint)}</div>
+    <div class="diag-actions">
+      <button class="btn sm btn-acc" id="diagSetup">${svg('compass', 12)} Spiel-Setup</button>
+      <button class="btn sm" id="diagSettings">${svg('gear', 12)} Einstellungen</button>
+      <button class="btn sm" id="diagFolder">${svg('folder', 12)} Datei-Ordner</button>
+    </div>`;
+  $('#diagSetup').onclick = () => { pop.classList.remove('open'); openSetup(); };
+  $('#diagSettings').onclick = () => { pop.classList.remove('open'); toggleSettings(true); };
+  $('#diagFolder').onclick = () => state.bridge.openPath('ue4ss');
 }
 
 // ------------------------------------------------------------ Suche
@@ -536,9 +602,13 @@ function buildSettings() {
                 <option value="bottom-left">unten links</option>
               </select>
             </label>
-            <label>Größe <input type="range" id="setHudSize" min="200" max="400" step="10"></label>
+            <label>Größe <input type="range" id="setHudSize" min="200" max="440" step="10"></label>
             <label>Zoom <input type="range" id="setHudZoom" min="1" max="5" step="0.2"></label>
             <label>Deckkraft <input type="range" id="setHudOpacity" min="0.4" max="1" step="0.05"></label>
+          </div>
+          <div class="set-row">
+            <button class="btn sm btn-acc" id="setHudPlace">${svg('target', 12)} Minimap frei positionieren</button>
+            <span class="hint" id="setHudPosNote"></span>
           </div>
         </section>
 
@@ -546,6 +616,8 @@ function buildSettings() {
           <h4>Karte</h4>
           <div class="set-grid">
             <label class="check"><input type="checkbox" id="setFollow"> Karte folgt Spieler</label>
+            <label class="check"><input type="checkbox" id="setTrail"> Bewegungsspur anzeigen</label>
+            <label class="check"><input type="checkbox" id="setGrid2"> Koordinatenraster</label>
             <label>Abdunklung hinter Karte <input type="range" id="setDim" min="0" max="0.9" step="0.05"></label>
           </div>
         </section>
@@ -566,9 +638,15 @@ function buildSettings() {
         </section>
 
         <section>
-          <h4>PalPilot</h4>
+          <h4>PalPilot & Updates</h4>
           <div class="hint" id="setAbout"></div>
-          <div class="set-row"><button class="btn sm danger" id="setQuit">${svg('x', 12)} Overlay beenden</button></div>
+          <div class="set-grid">
+            <label class="check"><input type="checkbox" id="setAutoUpd"> Beim Start automatisch von GitHub aktualisieren</label>
+          </div>
+          <div class="set-row">
+            <button class="btn sm btn-acc" id="setUpdNow">${svg('download', 12)} Jetzt nach Updates suchen</button>
+            <button class="btn sm danger" id="setQuit">${svg('x', 12)} Overlay beenden</button>
+          </div>
         </section>
       </div>
     </div>`;
@@ -578,10 +656,17 @@ function buildSettings() {
     if (e.target.id === 'settingsModal') toggleSettings(false);
   });
   $('#setOpenSetup').onclick = () => { toggleSettings(false); openSetup(); };
+  $('#setHudPlace').onclick = () => {
+    toggleSettings(false);
+    if (state.mode !== 'map') state.bridge.setMode('map');
+    toggleHudPlacement(true);
+    emit('toast', { icon: 'target', msg: 'Minimap ziehen zum Platzieren, dann „Fertig"' });
+  };
   $('#setUeOpen').onclick = () => state.bridge.openPath('ue4ss');
   $('#setOpenData').onclick = () => state.bridge.openPath('data');
   $('#setOpenUser').onclick = () => state.bridge.openPath('userData');
   $('#setQuit').onclick = () => state.bridge.quit();
+  $('#setUpdNow').onclick = () => { emit('toast', { icon: 'download', msg: 'Suche nach Updates…' }); runUpdateCheck({ manual: true }); };
 
   const bind = (id, get, set, evt = 'change') => {
     const el = $(id);
@@ -602,6 +687,9 @@ function buildSettings() {
   bind('#setHudZoom', null, (el) => patchSettings({ hud: { zoom: Number(el.value) } }), 'input');
   bind('#setHudOpacity', null, (el) => patchSettings({ hud: { opacity: Number(el.value) } }), 'input');
   bind('#setFollow', null, (el) => patchSettings({ map: { followPlayer: el.checked } }));
+  bind('#setTrail', null, (el) => { patchSettings({ map: { showTrail: el.checked } }); rebuildOverlays(); });
+  bind('#setGrid2', null, (el) => { patchSettings({ map: { showGrid: el.checked } }); rebuildOverlays(); });
+  bind('#setAutoUpd', null, (el) => patchSettings({ updates: { auto: el.checked } }));
   bind('#setDim', null, (el) => {
     patchSettings({ overlay: { dimBackground: Number(el.value) } });
     document.body.style.setProperty('--dim', el.value);
@@ -628,16 +716,20 @@ function syncSettingsForm() {
   $('#setHudMini').checked = s.hud.minimap !== false;
   $('#setHudBanner').checked = s.hud.navBanner !== false;
   $('#setHudRotate').checked = !!s.hud.rotate;
-  $('#setHudCorner').value = s.hud.corner || 'top-right';
+  $('#setHudCorner').value = s.hud.corner === 'custom' ? 'top-right' : (s.hud.corner || 'top-right');
   $('#setHudSize').value = s.hud.size || 280;
   $('#setHudZoom').value = s.hud.zoom || 2.4;
   $('#setHudOpacity').value = s.hud.opacity ?? 0.95;
+  $('#setHudPosNote').textContent = s.hud.corner === 'custom' && s.hud.customPos ? 'aktuell: frei platziert' : '';
   $('#setFollow').checked = !!s.map.followPlayer;
+  $('#setTrail').checked = s.map.showTrail !== false;
+  $('#setGrid2').checked = !!s.map.showGrid;
   $('#setDim').value = s.overlay.dimBackground ?? 0.6;
   $('#setHotkeys').innerHTML = Object.entries(s.hotkeys).map(([k, v]) => {
     const labels = { toggleMap: 'Karte öffnen/schließen', toggleHud: 'HUD ein/aus', quickWaypoint: 'Schnell-Wegpunkt', stopNav: 'Navigation stoppen' };
     return `<div class="hotkey-row"><span>${labels[k] || k}</span><kbd>${esc(v)}</kbd></div>`;
   }).join('');
+  $('#setAutoUpd').checked = s.updates?.auto !== false;
   $('#setAbout').innerHTML = `Version ${esc(state.version || '?')} · Modus: ${state.mock ? 'Demo (Mock)' : (state.windowed ? 'Fenster' : 'Overlay')}`;
   renderSettingsStatus();
   renderDataInfo();

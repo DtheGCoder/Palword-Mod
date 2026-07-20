@@ -122,6 +122,31 @@ function copyDirSync(src, dst) {
   }
 }
 
+// Ersetzt die Pfad-Konstanten in main.lua durch absolute Pfade, die exakt den
+// Overlay-Leseorten entsprechen. So passen Spiel-Schreibort und Overlay-Leseort
+// garantiert zusammen, egal wie TEMP im Spielprozess aufgelöst wird.
+function patchModPaths(modDir, paths) {
+  if (!paths) return false;
+  const luaEsc = (p) => String(p).replace(/\\/g, '\\\\');
+  const file = path.join(modDir, 'Scripts', 'main.lua');
+  try {
+    let lua = fs.readFileSync(file, 'utf8');
+    const block =
+      'local TEMP = os.getenv("TEMP") or "C:\\\\Windows\\\\Temp"\n' +
+      `local OUT_POS = "${luaEsc(paths.ue4ssFile)}"\n` +
+      `local OUT_INV = "${luaEsc(paths.invFile)}"\n` +
+      `local CMD     = "${luaEsc(paths.cmdFile)}"`;
+    // Ersetzt den ursprünglichen 4-Zeilen-Pfadblock (TEMP + drei Ableitungen)
+    const re = /local TEMP = os\.getenv\("TEMP"\)[^\n]*\nlocal OUT_POS[^\n]*\nlocal OUT_INV[^\n]*\nlocal CMD[^\n]*/;
+    if (!re.test(lua)) return false;
+    lua = lua.replace(re, block);
+    fs.writeFileSync(file, lua, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function patchGameUserSettings(prog) {
   const candidates = [
     path.join(process.env.LOCALAPPDATA || '', 'Pal', 'Saved', 'Config', 'Windows', 'GameUserSettings.ini'),
@@ -155,7 +180,7 @@ function patchGameUserSettings(prog) {
  * @param {string} gamePath z.B. D:\SteamLibrary\steamapps\common\Palworld
  * @param {(step:string,status:string,msg:string)=>void} prog
  */
-async function runSetup(ROOT, gamePath, prog) {
+async function runSetup(ROOT, gamePath, prog, paths) {
   const result = { ok: false, gamePath, modsDir: null, warnings: 0 };
   const warn = (step, msg) => { result.warnings++; prog(step, 'warn', msg); };
 
@@ -184,12 +209,15 @@ async function runSetup(ROOT, gamePath, prog) {
   }
   result.modsDir = mods;
 
-  // 3) Mod kopieren
+  // 3) Mod kopieren + Dateipfade auf die EXAKTEN Overlay-Pfade patchen
+  //    (verhindert TEMP-Mismatch zwischen Spiel-Prozess und Overlay → „Mod nicht verbunden")
   prog('mod', 'run', 'Kopiere PalOverlayTracker-Mod…');
   try {
     const src = path.join(ROOT, 'ue4ss-mod', 'PalOverlayTracker');
-    copyDirSync(src, path.join(mods, 'PalOverlayTracker'));
-    prog('mod', 'ok', `Mod installiert: ${path.join(mods, 'PalOverlayTracker')}`);
+    const dst = path.join(mods, 'PalOverlayTracker');
+    copyDirSync(src, dst);
+    const patched = patchModPaths(dst, paths);
+    prog('mod', 'ok', `Mod installiert${patched ? ' (Pfade fest verdrahtet)' : ''}: ${dst}`);
   } catch (e) {
     prog('mod', 'err', `Kopieren fehlgeschlagen: ${e.message}${/EPERM|EACCES/.test(String(e.code)) ? ' — Ordner ist schreibgeschützt, PalPilot einmal als Administrator starten.' : ''}`);
     return result;

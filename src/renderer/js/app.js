@@ -11,6 +11,7 @@ import { initNavMenu } from './navmenu.js';
 import { initNav, quickWaypointAtPlayer, stopNav } from './nav.js';
 import { initSetup, openSetup, closeSetup, isSetupOpen } from './setup.js';
 import { initAdmin, isAdminOpen, closeAdmin } from './admin.js';
+import { initUpdater } from './updater.js';
 
 let lastLive = null;
 let lastPlayerRegion = null;
@@ -55,6 +56,7 @@ async function main() {
   initNavMenu();
   initSetup();
   initAdmin();
+  initUpdater();
   emit('dataLoaded');
 
   // Region-Wahl persistieren

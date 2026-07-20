@@ -24,6 +24,7 @@ let suspendFollow = false;
 let lastPan = 0;
 let imgUrlCache = {};
 let navClickMode = false;
+let regionBounds = null;
 
 export function setNavClickMode(on) {
   navClickMode = !!on;
@@ -52,13 +53,16 @@ export async function initMap() {
     crs: L.CRS.Simple,
     zoomControl: false,
     attributionControl: false,
-    minZoom: -4,
+    minZoom: -5,
     maxZoom: 2.5,
     zoomSnap: 0.25,
     zoomDelta: 0.5,
     wheelPxPerZoomLevel: 110,
     doubleClickZoom: false,
     boxZoom: false,
+    maxBoundsViscosity: 1.0,   // Karte „klebt" an den Rändern, kein Wegschieben
+    inertia: true,
+    inertiaDeceleration: 2600,
   });
   spawnRenderer = L.canvas({ padding: 0.4 });
 
@@ -89,7 +93,11 @@ export async function initMap() {
   on('waypoints', drawWaypoints);
   on('filters', rebuildOverlays);
   on('region', () => rebuildOverlays());
-  window.addEventListener('resize', () => map && map.invalidateSize());
+  window.addEventListener('resize', () => {
+    if (!map) return;
+    map.invalidateSize();
+    applyBoundsLimits();
+  });
 }
 
 export function getMap() { return map; }
@@ -103,8 +111,7 @@ export async function setRegion(regionId, opts = {}) {
   const cfg = state.data.regions[regionId];
 
   if (imageLayer) { imageLayer.remove(); imageLayer = null; }
-  const bounds = L.latLngBounds(ll(0, cfg.height), ll(cfg.width, 0));
-  map.setMaxBounds(bounds.pad(0.25));
+  regionBounds = L.latLngBounds(ll(0, cfg.height), ll(cfg.width, 0));
   document.getElementById('map').style.background = cfg.seaColor || '#0a1622';
 
   if (!imgUrlCache[regionId]) {
@@ -112,20 +119,35 @@ export async function setRegion(regionId, opts = {}) {
   }
   const url = imgUrlCache[regionId];
   if (url) {
-    imageLayer = L.imageOverlay(url, bounds, { className: 'region-image' }).addTo(map);
+    imageLayer = L.imageOverlay(url, regionBounds, { className: 'region-image' }).addTo(map);
     imageLayer.on('error', () => showMapMissing(cfg));
   } else {
     showMapMissing(cfg);
   }
 
+  // Mindestzoom so wählen, dass das Bild den Bildschirm FÜLLT (kein Wegschieben),
+  // und die Karte an den Bildrändern begrenzen.
+  const coverZoom = applyBoundsLimits();
+
   const saved = viewByRegion[regionId];
   if (saved && !opts.fit) {
-    map.setView(saved.center, saved.zoom, { animate: false });
+    map.setView(saved.center, Math.max(saved.zoom, coverZoom), { animate: false });
   } else {
-    map.fitBounds(bounds, { animate: false });
+    map.setView(regionBounds.getCenter(), coverZoom, { animate: false });
   }
   rebuildOverlays();
   emit('regionChanged', regionId);
+}
+
+// Setzt maxBounds auf die Bildgrenzen und minZoom auf „bildschirmfüllend".
+function applyBoundsLimits() {
+  if (!regionBounds) return map.getZoom();
+  map.setMaxBounds(regionBounds);
+  let coverZoom = map.getBoundsZoom(regionBounds, true); // true = füllen (cover)
+  if (!Number.isFinite(coverZoom)) coverZoom = -3;
+  map.setMinZoom(coverZoom);
+  if (map.getZoom() < coverZoom) map.setZoom(coverZoom, { animate: false });
+  return coverZoom;
 }
 
 function showMapMissing(cfg) {
@@ -377,8 +399,9 @@ function drawPlayer(force) {
 }
 
 function drawTrail() {
-  const pts = state.trail.filter((t) => t.region === state.region);
   if (trailLine) { trailLine.remove(); trailLine = null; }
+  if (state.settings.map?.showTrail === false) return;
+  const pts = state.trail.filter((t) => t.region === state.region);
   if (pts.length < 2) return;
   trailLine = L.polyline(pts.map((t) => worldToLl(t.wx, t.wy)), {
     color: '#46c8ff', weight: 2, opacity: 0.35, dashArray: '1 6', interactive: false, lineCap: 'round',

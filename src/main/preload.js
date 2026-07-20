@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('palOverlay', {
   // Fenster-Modus
   setMode: (mode) => ipcRenderer.invoke('mode:set', mode),
 
+  // Auto-Updater
+  updateCheck: (opts) => ipcRenderer.invoke('update:check', opts),
+  onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_e, d) => cb(d)),
+
   // Admin-Inventar
   invCommand: (cmds) => ipcRenderer.invoke('inv:command', cmds),
   onInventory: (cb) => ipcRenderer.on('inv:update', (_e, d) => cb(d)),

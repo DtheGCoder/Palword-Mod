@@ -11,6 +11,7 @@ if errorlevel 1 (
 
 if not exist node_modules (
   echo Erste Einrichtung: installiere Abhaengigkeiten...
+  echo Hinweis: Electron laedt dabei EINMALIG ca. 100 MB - bitte warten.
   call npm install --no-audit --no-fund
 )
 

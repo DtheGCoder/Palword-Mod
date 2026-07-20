@@ -19,6 +19,7 @@ const { PositionEngine } = require('./position');
 const { InventoryBridge } = require('./inventory');
 const { trayIconPng } = require('./png');
 const { detectPalworld, runSetup } = require('./setup');
+const { checkAndUpdate } = require('./updater');
 
 const ROOT = path.join(__dirname, '..', '..');
 const ARGS = new Set(process.argv.slice(1));
@@ -68,6 +69,9 @@ const DEFAULT_SETTINGS = {
   game: {
     path: null,            // Palworld-Installationsordner (vom Setup gesetzt)
     setupDone: false,
+  },
+  updates: {
+    auto: true,            // beim Start automatisch von GitHub aktualisieren
   },
   firstRun: true,
 };
@@ -311,7 +315,7 @@ function setupIpc() {
     };
     let result;
     try {
-      result = await runSetup(ROOT, gamePath, prog);
+      result = await runSetup(ROOT, gamePath, prog, settingsStore.data.position);
     } catch (e) {
       prog('validate', 'err', 'Unerwarteter Fehler: ' + e.message);
       result = { ok: false };
@@ -321,6 +325,22 @@ function setupIpc() {
       if (win && !win.isDestroyed()) win.webContents.send('settings:changed', next);
     }
     return result;
+  });
+
+  // --- Auto-Updater ---
+  ipcMain.handle('update:check', async (_e, opts = {}) => {
+    const prog = (step, msg) => { if (win && !win.isDestroyed()) win.webContents.send('update:progress', { step, msg }); };
+    let res;
+    try {
+      res = await checkAndUpdate(ROOT, prog);
+    } catch (e) {
+      res = { skipped: true, reason: e.message };
+    }
+    // Automatisch installiertes Update → App neu starten (kurz warten für UI-Hinweis)
+    if (res && res.updated && (opts.autoRelaunch !== false)) {
+      setTimeout(() => { app.relaunch(); app.exit(0); }, 2600);
+    }
+    return res;
   });
 
   // --- Admin-Inventar (nur lokaler Spieler) ---

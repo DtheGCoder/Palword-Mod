@@ -54,14 +54,81 @@ export function initHud() {
 
 function applyHudSettings() {
   const hud = state.settings?.hud || {};
-  const size = Math.max(180, Math.min(420, hud.size || 280));
+  const size = Math.max(180, Math.min(460, hud.size || 280));
   cluster.style.setProperty('--size', size + 'px');
   cluster.style.opacity = hud.opacity ?? 0.95;
-  cluster.className = 'corner-' + (hud.corner || 'top-right');
+  if (hud.corner === 'custom' && hud.customPos) {
+    cluster.className = 'corner-custom';
+    cluster.style.left = Math.max(0, Math.min(window.innerWidth - size, hud.customPos.x)) + 'px';
+    cluster.style.top = Math.max(0, Math.min(window.innerHeight - size, hud.customPos.y)) + 'px';
+    cluster.style.right = cluster.style.bottom = 'auto';
+  } else {
+    cluster.className = 'corner-' + (hud.corner || 'top-right');
+    cluster.style.left = cluster.style.top = cluster.style.right = cluster.style.bottom = '';
+  }
   const dpr = window.devicePixelRatio || 1;
   canvas.width = size * dpr;
   canvas.height = size * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// Platzierungs-Modus: Minimap frei per Drag positionieren.
+let placing = false;
+export function toggleHudPlacement(on) {
+  placing = on ?? !placing;
+  state.placingHud = placing;
+  document.body.classList.toggle('placing-hud', placing);
+  let bar = document.getElementById('hudPlaceBar');
+  if (placing) {
+    if (!state.settings.hud.customPos) {
+      const r = cluster.getBoundingClientRect();
+      state.settings.hud.customPos = { x: r.left, y: r.top };
+    }
+    state.settings.hud.corner = 'custom';
+    applyHudSettings();
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'hudPlaceBar';
+      bar.innerHTML = `<span>${svg('target', 14)} Minimap ziehen zum Platzieren</span>
+        <button class="btn sm" id="hudPlaceReset">Ecke oben-rechts</button>
+        <button class="btn btn-acc sm" id="hudPlaceDone">Fertig</button>`;
+      document.body.appendChild(bar);
+      document.getElementById('hudPlaceDone').onclick = () => toggleHudPlacement(false);
+      document.getElementById('hudPlaceReset').onclick = () => {
+        state.bridge.setSettings({ hud: { corner: 'top-right', customPos: null } });
+        state.settings.hud.corner = 'top-right'; state.settings.hud.customPos = null;
+        applyHudSettings();
+      };
+    }
+    attachDrag();
+  } else {
+    if (bar) bar.remove();
+    // Position persistent speichern
+    state.bridge.setSettings({ hud: { corner: 'custom', customPos: state.settings.hud.customPos } });
+  }
+}
+
+function attachDrag() {
+  let sx, sy, ox, oy, dragging = false;
+  const down = (e) => {
+    dragging = true;
+    const r = cluster.getBoundingClientRect();
+    sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+    e.preventDefault();
+  };
+  const move = (e) => {
+    if (!dragging) return;
+    const size = parseInt(cluster.style.getPropertyValue('--size')) || 280;
+    const x = Math.max(0, Math.min(window.innerWidth - size, ox + e.clientX - sx));
+    const y = Math.max(0, Math.min(window.innerHeight - size, oy + e.clientY - sy));
+    state.settings.hud.customPos = { x, y };
+    cluster.style.left = x + 'px'; cluster.style.top = y + 'px';
+    cluster.style.right = cluster.style.bottom = 'auto';
+  };
+  const up = () => { dragging = false; };
+  cluster.addEventListener('mousedown', down);
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
 }
 
 async function regionImage(regionId) {
@@ -80,9 +147,9 @@ async function regionImage(regionId) {
 
 function tick() {
   const hud = state.settings?.hud || {};
-  const visible = state.mode === 'hud' && hud.enabled !== false && hud.minimap !== false;
-  cluster.style.display = state.mode === 'hud' && hud.enabled !== false ? 'flex' : 'none';
-  if (!visible) return;
+  const show = (state.mode === 'hud' && hud.enabled !== false) || state.placingHud;
+  cluster.style.display = show ? 'flex' : 'none';
+  if (!show || hud.minimap === false) return;
   draw();
   updateBanner();
   updateStatus();
@@ -158,7 +225,7 @@ function draw() {
   };
 
   // Spur
-  const trail = state.trail;
+  const trail = state.settings.map?.showTrail === false ? [] : state.trail;
   if (trail.length > 1) {
     ctx.strokeStyle = 'rgba(70,200,255,0.4)';
     ctx.lineWidth = 1.5;
@@ -274,9 +341,15 @@ function drawWaiting(R) {
   ctx.font = '12px "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('Warte auf Spielerposition…', R, R + 38);
-  ctx.fillStyle = 'rgba(140,165,190,0.55)';
+  ctx.fillStyle = 'rgba(140,165,190,0.6)';
   ctx.font = '10px "Segoe UI", sans-serif';
-  ctx.fillText('UE4SS-Mod oder REST-API verbinden', R, R + 54);
+  const st = state.posStatus || {};
+  let hint;
+  if (st.ue4ss === 'stale') hint = 'Läuft Palworld noch? (Menü/Ladescreen zählt nicht)';
+  else if (st.rest === 'error') hint = 'REST-API prüfen (Host/Port/Passwort)';
+  else if (state.settings?.game?.setupDone) hint = 'Starte Palworld mit der Mod';
+  else hint = 'F6 → Status oben → „Spiel-Setup"';
+  ctx.fillText(hint, R, R + 54);
 }
 
 function updateBanner() {
