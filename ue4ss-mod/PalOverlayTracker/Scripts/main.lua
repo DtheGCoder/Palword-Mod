@@ -209,10 +209,18 @@ end
 
 local function consumeItem(inv, itemId, count)
     if count <= 0 then return end
-    local util = StaticFindObject("/Script/Pal.Default__PalUtility")
-    if util then
-        pcall(function() util:RequestConsumeInventoryItem(inv, FName(itemId), count) end)
+    local fid = FName(itemId)
+    -- WICHTIG: RequestConsumeInventoryItem liegt auf UPalIncidentBase — NICHT auf
+    -- PalUtility (das war der Bug: „gemacht", aber nichts passierte).
+    local inc = StaticFindObject("/Script/Pal.Default__PalIncidentBase")
+    if inc then
+        local ok = pcall(function() inc:RequestConsumeInventoryItem(inv, fid, count) end)
+        if ok then return end
     end
+    -- Fallback: negatives „Add" entfernt in vielen Builds ebenfalls Items.
+    local ok2 = pcall(function() inv:RequestAddItem_ForDebug(fid, -count, false) end)
+    if ok2 then return end
+    pcall(function() inv:AddItem_ServerInternal(fid, -count, false, 0.0, true) end)
 end
 
 local function applyCommand(op, id, count)
